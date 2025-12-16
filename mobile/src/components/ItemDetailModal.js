@@ -4,7 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase, uploadImage } from '../lib/supabase';
 
-const ItemDetailModal = ({ visible, item, onClose, onUpdate }) => {
+const ItemDetailModal = ({ visible, item, onClose, onUpdate, onMove }) => {
     const [uploading, setUploading] = useState(false);
 
     if (!item) return null;
@@ -200,6 +200,11 @@ const ItemDetailModal = ({ visible, item, onClose, onUpdate }) => {
                                 <Text style={styles.actionBtnText}>Remove Photo</Text>
                             </TouchableOpacity>
                         )}
+
+                        <TouchableOpacity style={styles.actionBtn} onPress={onMove}>
+                            <MaterialIcons name="drive-file-move" size={24} color="#C9B59C" />
+                            <Text style={styles.actionBtnText}>Move Item</Text>
+                        </TouchableOpacity>
 
                         <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteItem}>
                             <MaterialIcons name="delete-forever" size={24} color="white" />
