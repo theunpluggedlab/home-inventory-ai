@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, TextInput, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, TextInput, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import RoomSection from '../components/RoomSection';
+import ItemRow from '../components/ItemRow';
 
 const InventoryScreen = ({ navigation }) => {
     const [data, setData] = useState([]);
+    const [unsortedItems, setUnsortedItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -15,9 +17,15 @@ const InventoryScreen = ({ navigation }) => {
     const [renameTarget, setRenameTarget] = useState(null); // { type: 'room'|'storage', id, currentName }
     const [newName, setNewName] = useState('');
 
+    // Move Item Modal State
+    const [moveModalVisible, setMoveModalVisible] = useState(false);
+    const [itemToMove, setItemToMove] = useState(null);
+    const [locations, setLocations] = useState([]);
+    const [selectedLocation, setSelectedLocation] = useState(null);
+
     const fetchInventory = async () => {
         try {
-            // Supabase Query
+            // Fetch regular inventory (rooms with storage units)
             const { data: rawData, error } = await supabase
                 .from('rooms')
                 .select(`
@@ -40,6 +48,18 @@ const InventoryScreen = ({ navigation }) => {
 
             console.log('Fetched inventory items:', rawData?.length);
             setData(rawData || []);
+
+            // Fetch unsorted items (where storage_id is null)
+            const { data: unsorted, error: unsortedError } = await supabase
+                .from('items')
+                .select('*')
+                .is('storage_id', null);
+
+            if (unsortedError) throw unsortedError;
+
+            console.log('Fetched unsorted items:', unsorted?.length);
+            setUnsortedItems(unsorted || []);
+
         } catch (err) {
             console.error(err);
         } finally {
@@ -48,26 +68,47 @@ const InventoryScreen = ({ navigation }) => {
         }
     };
 
+    const fetchLocations = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('storage_units')
+                .select('id, name, rooms(name)')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const formatted = data.map(unit => ({
+                id: unit.id,
+                name: unit.name,
+                room: unit.rooms?.name || "Unknown Room",
+                label: `${unit.rooms?.name || 'Unknown'} > ${unit.name}`
+            }));
+            setLocations(formatted);
+        } catch (err) {
+            console.log("Error fetching locations:", err);
+        }
+    };
+
     useEffect(() => {
         fetchInventory();
+        fetchLocations();
     }, []);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
         fetchInventory();
+        fetchLocations();
     }, []);
 
     const handleItemPress = (item) => {
-        // Navigate to Details? For now just log or alert
-        // navigation.navigate('ItemDetails', { item });
         console.log("Pressed item", item.name);
     };
 
-    // Delete Room
+    // Delete Room - with safety for items
     const handleDeleteRoom = (room) => {
         Alert.alert(
             "Delete Room",
-            `Are you sure you want to delete '${room.name}'? All storage units and items inside it will be lost.`,
+            `Delete '${room.name}'? All items inside will be moved to 'Unsorted Items'.`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -75,6 +116,24 @@ const InventoryScreen = ({ navigation }) => {
                     style: "destructive",
                     onPress: async () => {
                         try {
+                            // STEP 1: Set all items in this room's storage units to null
+                            // First get all storage unit IDs in this room
+                            const { data: storageUnits } = await supabase
+                                .from('storage_units')
+                                .select('id')
+                                .eq('room_id', room.id);
+
+                            if (storageUnits && storageUnits.length > 0) {
+                                const storageIds = storageUnits.map(u => u.id);
+
+                                // Update items to have null storage_id
+                                await supabase
+                                    .from('items')
+                                    .update({ storage_id: null })
+                                    .in('storage_id', storageIds);
+                            }
+
+                            // STEP 2: Delete the room (cascade will delete storage units)
                             const { error } = await supabase
                                 .from('rooms')
                                 .delete()
@@ -82,7 +141,7 @@ const InventoryScreen = ({ navigation }) => {
 
                             if (error) throw error;
 
-                            Alert.alert("Success", "Room deleted successfully!");
+                            Alert.alert("Success", "Room deleted. Items moved to 'Unsorted'.");
                             fetchInventory(); // Refresh list
                         } catch (err) {
                             Alert.alert("Error", "Failed to delete room: " + err.message);
@@ -93,11 +152,11 @@ const InventoryScreen = ({ navigation }) => {
         );
     };
 
-    // Delete Storage Unit
+    // Delete Storage Unit - with safety for items
     const handleDeleteStorageUnit = (unit) => {
         Alert.alert(
             "Delete Storage Unit",
-            `Are you sure you want to delete '${unit.name}'? All items inside it will be lost.`,
+            `Delete '${unit.name}'? All items inside will be moved to 'Unsorted Items'.`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -105,6 +164,13 @@ const InventoryScreen = ({ navigation }) => {
                     style: "destructive",
                     onPress: async () => {
                         try {
+                            // STEP 1: Set all items in this storage unit to null
+                            await supabase
+                                .from('items')
+                                .update({ storage_id: null })
+                                .eq('storage_id', unit.id);
+
+                            // STEP 2: Delete the storage unit
                             const { error } = await supabase
                                 .from('storage_units')
                                 .delete()
@@ -112,7 +178,7 @@ const InventoryScreen = ({ navigation }) => {
 
                             if (error) throw error;
 
-                            Alert.alert("Success", "Storage unit deleted successfully!");
+                            Alert.alert("Success", "Storage unit deleted. Items moved to 'Unsorted'.");
                             fetchInventory(); // Refresh list
                         } catch (err) {
                             Alert.alert("Error", "Failed to delete storage unit: " + err.message);
@@ -160,6 +226,35 @@ const InventoryScreen = ({ navigation }) => {
         }
     };
 
+    // Move Item functionality
+    const handleMoveItem = (item) => {
+        setItemToMove(item);
+        setSelectedLocation(null);
+        setMoveModalVisible(true);
+    };
+
+    const handleMoveSubmit = async () => {
+        if (!selectedLocation) {
+            Alert.alert("Error", "Please select a location");
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('items')
+                .update({ storage_id: selectedLocation.id })
+                .eq('id', itemToMove.id);
+
+            if (error) throw error;
+
+            Alert.alert("Success", `Item moved to ${selectedLocation.label}`);
+            setMoveModalVisible(false);
+            fetchInventory(); // Refresh list
+        } catch (err) {
+            Alert.alert("Error", "Failed to move item: " + err.message);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
             <View style={styles.header}>
@@ -171,30 +266,57 @@ const InventoryScreen = ({ navigation }) => {
                     <ActivityIndicator size="large" color="#C9B59C" />
                 </View>
             ) : (
-                <FlatList
-                    data={data}
-                    keyExtractor={item => item.id.toString()}
-                    renderItem={({ item }) => (
-                        <RoomSection
-                            room={item}
-                            storageUnits={item.storage}
-                            onItemPress={handleItemPress}
-                            onDeleteRoom={handleDeleteRoom}
-                            onEditRoom={handleEditRoom}
-                            onDeleteStorageUnit={handleDeleteStorageUnit}
-                            onEditStorageUnit={handleEditStorageUnit}
-                        />
-                    )}
-                    contentContainerStyle={styles.listContent}
+                <ScrollView
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#C9B59C" />
                     }
-                    ListEmptyComponent={
+                    contentContainerStyle={styles.listContent}
+                >
+                    {/* Unsorted Items Section */}
+                    {unsortedItems.length > 0 && (
+                        <View style={styles.unsortedSection}>
+                            <View style={styles.unsortedHeader}>
+                                <MaterialIcons name="warning" size={20} color="#FF6B6B" />
+                                <Text style={styles.unsortedTitle}>Unsorted Items ({unsortedItems.length})</Text>
+                            </View>
+                            <Text style={styles.unsortedSubtitle}>
+                                These items need to be assigned to a location
+                            </Text>
+                            {unsortedItems.map(item => (
+                                <View key={item.id} style={styles.unsortedItemRow}>
+                                    <ItemRow item={item} onPress={() => handleItemPress(item)} />
+                                    <TouchableOpacity
+                                        style={styles.moveBtn}
+                                        onPress={() => handleMoveItem(item)}
+                                    >
+                                        <MaterialIcons name="drive-file-move" size={20} color="white" />
+                                        <Text style={styles.moveBtnTxt}>Move</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
+                    {/* Regular Inventory */}
+                    {data.length === 0 ? (
                         <View style={styles.center}>
                             <Text style={styles.emptyText}>No inventory found.</Text>
                         </View>
-                    }
-                />
+                    ) : (
+                        data.map(room => (
+                            <RoomSection
+                                key={room.id}
+                                room={room}
+                                storageUnits={room.storage}
+                                onItemPress={handleItemPress}
+                                onDeleteRoom={handleDeleteRoom}
+                                onEditRoom={handleEditRoom}
+                                onDeleteStorageUnit={handleDeleteStorageUnit}
+                                onEditStorageUnit={handleEditStorageUnit}
+                            />
+                        ))
+                    )}
+                </ScrollView>
             )}
 
             {/* Rename Modal */}
@@ -226,6 +348,62 @@ const InventoryScreen = ({ navigation }) => {
                                 onPress={handleRenameSubmit}
                             >
                                 <Text style={styles.submitBtnTxt}>Rename</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Move Item Modal */}
+            <Modal visible={moveModalVisible} animationType="slide" transparent={true}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Move Item</Text>
+                            <TouchableOpacity onPress={() => setMoveModalVisible(false)}>
+                                <MaterialIcons name="close" size={24} color="#333" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.modalSubtitle}>
+                            Moving: {itemToMove?.name}
+                        </Text>
+
+                        <Text style={styles.sectionLabel}>Select Location:</Text>
+
+                        <ScrollView style={styles.locationList}>
+                            {locations.map(loc => (
+                                <TouchableOpacity
+                                    key={loc.id}
+                                    style={[
+                                        styles.locationItem,
+                                        selectedLocation?.id === loc.id && styles.locationItemSelected
+                                    ]}
+                                    onPress={() => setSelectedLocation(loc)}
+                                >
+                                    <View>
+                                        <Text style={styles.locationName}>{loc.name}</Text>
+                                        <Text style={styles.locationRoom}>{loc.room}</Text>
+                                    </View>
+                                    {selectedLocation?.id === loc.id && (
+                                        <MaterialIcons name="check-circle" size={24} color="#C9B59C" />
+                                    )}
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={styles.cancelBtn}
+                                onPress={() => setMoveModalVisible(false)}
+                            >
+                                <Text style={styles.cancelBtnTxt}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.submitBtn}
+                                onPress={handleMoveSubmit}
+                            >
+                                <Text style={styles.submitBtnTxt}>Move Here</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -265,6 +443,49 @@ const styles = StyleSheet.create({
         color: '#999',
         fontSize: 16,
     },
+    // Unsorted Items Section
+    unsortedSection: {
+        backgroundColor: '#FFF5F5',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 24,
+        borderWidth: 2,
+        borderColor: '#FFE0E0',
+    },
+    unsortedHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    unsortedTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#FF6B6B',
+        marginLeft: 8,
+    },
+    unsortedSubtitle: {
+        fontSize: 13,
+        color: '#999',
+        marginBottom: 16,
+    },
+    unsortedItemRow: {
+        marginBottom: 8,
+    },
+    moveBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#C9B59C',
+        padding: 12,
+        borderRadius: 8,
+        marginTop: 8,
+        gap: 6,
+    },
+    moveBtnTxt: {
+        color: 'white',
+        fontWeight: '600',
+        fontSize: 14,
+    },
     // Modal Styles
     modalOverlay: {
         flex: 1,
@@ -279,12 +500,18 @@ const styles = StyleSheet.create({
         padding: 24,
         width: '100%',
         maxWidth: 400,
+        maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
     },
     modalTitle: {
         fontSize: 20,
         fontWeight: '700',
         color: '#2D2D2D',
-        marginBottom: 8,
     },
     modalSubtitle: {
         fontSize: 14,
@@ -299,6 +526,40 @@ const styles = StyleSheet.create({
         fontSize: 16,
         backgroundColor: '#FAFAFA',
         marginBottom: 24,
+    },
+    sectionLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#2D2D2D',
+        marginBottom: 12,
+    },
+    locationList: {
+        maxHeight: 300,
+        marginBottom: 24,
+    },
+    locationItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: '#F9F9F9',
+        borderRadius: 12,
+        marginBottom: 8,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    locationItemSelected: {
+        borderColor: '#C9B59C',
+        backgroundColor: '#FCF8F4',
+    },
+    locationName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#2D2D2D',
+    },
+    locationRoom: {
+        fontSize: 13,
+        color: '#999',
     },
     modalActions: {
         flexDirection: 'row',
