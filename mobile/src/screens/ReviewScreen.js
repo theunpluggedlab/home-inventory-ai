@@ -36,6 +36,8 @@ const ReviewScreen = ({ route, navigation }) => {
 
         } catch (error) {
             console.log("Analysis error:", error);
+            // Show the actual error to the user for debugging
+            Alert.alert("Analysis Failed", error.message || JSON.stringify(error));
             setItems([{ name: 'Error scanning item', category: 'General', quantity: 1 }]);
         } finally {
             setAnalyzing(false);
