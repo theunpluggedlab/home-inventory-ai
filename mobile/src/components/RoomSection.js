@@ -3,61 +3,144 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import ItemRow from './ItemRow';
 
-const RoomSection = ({ room, storageUnits, onItemPress, onDeleteRoom, onEditRoom, onDeleteStorageUnit, onEditStorageUnit }) => {
+const RoomSection = ({
+    room,
+    storageUnits,
+    onItemPress,
+    onDeleteRoom,
+    onEditRoom,
+    onDeleteStorageUnit,
+    onEditStorageUnit,
+    // Selection mode props
+    isSelectionMode,
+    selectedRooms,
+    selectedStorageUnits,
+    selectedItems,
+    onLongPressRoom,
+    onLongPressStorage,
+    onLongPressItem,
+    onToggleSelectRoom,
+    onToggleSelectStorage,
+    onToggleSelectItem,
+}) => {
+    const isRoomSelected = isSelectionMode && selectedRooms?.includes(room.id);
+
+    const handleRoomPress = () => {
+        if (isSelectionMode) {
+            onToggleSelectRoom && onToggleSelectRoom(room.id);
+        }
+    };
+
     return (
         <View style={styles.container}>
             {/* Room Header with Action Buttons */}
             <View style={styles.headerRow}>
-                <View style={styles.bar} />
-                <Text style={styles.header}>{room.name}</Text>
-                <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                        style={styles.actionBtn}
-                        onPress={() => onEditRoom(room)}
-                    >
-                        <MaterialIcons name="edit" size={18} color="#C9B59C" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={styles.actionBtn}
-                        onPress={() => onDeleteRoom(room)}
-                    >
-                        <MaterialIcons name="delete" size={18} color="#FF6B6B" />
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                    style={styles.headerContent}
+                    onPress={handleRoomPress}
+                    onLongPress={() => onLongPressRoom && onLongPressRoom(room)}
+                    delayLongPress={500}
+                    disabled={!isSelectionMode && !onLongPressRoom}
+                >
+                    {isSelectionMode && (
+                        <View style={styles.checkbox}>
+                            <MaterialIcons
+                                name={isRoomSelected ? "check-box" : "check-box-outline-blank"}
+                                size={24}
+                                color={isRoomSelected ? "#C9B59C" : "#CCCCCC"}
+                            />
+                        </View>
+                    )}
+                    <View style={styles.bar} />
+                    <Text style={styles.header}>{room.name}</Text>
+                </TouchableOpacity>
+                {!isSelectionMode && (
+                    <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                            style={styles.actionBtn}
+                            onPress={() => onEditRoom(room)}
+                        >
+                            <MaterialIcons name="edit" size={18} color="#C9B59C" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.actionBtn}
+                            onPress={() => onDeleteRoom(room)}
+                        >
+                            <MaterialIcons name="delete" size={18} color="#FF6B6B" />
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
 
             {/* Storage Units */}
-            {storageUnits.map((unit) => (
-                <View key={unit.id} style={styles.storageBlock}>
-                    {/* Storage Unit Header with Action Buttons */}
-                    <View style={styles.storageTitleRow}>
-                        <Text style={styles.storageTitle}>{unit.name}</Text>
-                        <View style={styles.actionButtons}>
-                            <TouchableOpacity
-                                style={styles.actionBtn}
-                                onPress={() => onEditStorageUnit(unit)}
-                            >
-                                <MaterialIcons name="edit" size={16} color="#C9B59C" />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.actionBtn}
-                                onPress={() => onDeleteStorageUnit(unit)}
-                            >
-                                <MaterialIcons name="delete" size={16} color="#FF6B6B" />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+            {storageUnits.map((unit) => {
+                const isStorageSelected = isSelectionMode && selectedStorageUnits?.includes(unit.id);
 
-                    {/* Items */}
-                    {unit.items && unit.items.length > 0 ? (
-                        unit.items.map(item => (
-                            <ItemRow key={item.id} item={item} onPress={() => onItemPress(item)} />
-                        ))
-                    ) : (
-                        <Text style={styles.emptyText}>No items</Text>
-                    )}
-                </View>
-            ))}
+                const handleStoragePress = () => {
+                    if (isSelectionMode) {
+                        onToggleSelectStorage && onToggleSelectStorage(unit.id);
+                    }
+                };
+
+                return (
+                    <View key={unit.id} style={styles.storageBlock}>
+                        {/* Storage Unit Header with Action Buttons */}
+                        <View style={styles.storageTitleRow}>
+                            <TouchableOpacity
+                                style={styles.storageTitleContent}
+                                onPress={handleStoragePress}
+                                onLongPress={() => onLongPressStorage && onLongPressStorage(unit)}
+                                delayLongPress={500}
+                                disabled={!isSelectionMode && !onLongPressStorage}
+                            >
+                                {isSelectionMode && (
+                                    <View style={styles.checkbox}>
+                                        <MaterialIcons
+                                            name={isStorageSelected ? "check-box" : "check-box-outline-blank"}
+                                            size={22}
+                                            color={isStorageSelected ? "#C9B59C" : "#CCCCCC"}
+                                        />
+                                    </View>
+                                )}
+                                <Text style={styles.storageTitle}>{unit.name}</Text>
+                            </TouchableOpacity>
+                            {!isSelectionMode && (
+                                <View style={styles.actionButtons}>
+                                    <TouchableOpacity
+                                        style={styles.actionBtn}
+                                        onPress={() => onEditStorageUnit(unit)}
+                                    >
+                                        <MaterialIcons name="edit" size={16} color="#C9B59C" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.actionBtn}
+                                        onPress={() => onDeleteStorageUnit(unit)}
+                                    >
+                                        <MaterialIcons name="delete" size={16} color="#FF6B6B" />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+
+                        {/* Items */}
+                        {unit.items && unit.items.length > 0 ? (
+                            unit.items.map(item => (
+                                <ItemRow
+                                    key={item.id}
+                                    item={item}
+                                    onPress={() => onItemPress(item)}
+                                    isSelectionMode={isSelectionMode}
+                                    isSelected={selectedItems?.includes(item.id)}
+                                    onLongPress={onLongPressItem}
+                                    onToggleSelect={onToggleSelectItem}
+                                />
+                            ))
+                        ) : (
+                            <Text style={styles.emptyText}>No items</Text>
+                        )}
+                    </View>
+                );
+            })}
         </View>
     );
 };
@@ -70,6 +153,14 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 12,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    checkbox: {
+        marginRight: 8,
     },
     bar: {
         width: 4,
@@ -105,6 +196,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: 8,
+    },
+    storageTitleContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
     },
     storageTitle: {
         fontSize: 14,

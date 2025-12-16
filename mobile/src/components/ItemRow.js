@@ -2,9 +2,31 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
-const ItemRow = ({ item, onPress }) => {
+const ItemRow = ({ item, onPress, isSelectionMode, isSelected, onLongPress, onToggleSelect }) => {
+    const handlePress = () => {
+        if (isSelectionMode) {
+            onToggleSelect && onToggleSelect(item);
+        } else {
+            onPress && onPress(item);
+        }
+    };
+
     return (
-        <TouchableOpacity style={styles.container} onPress={onPress}>
+        <TouchableOpacity
+            style={[styles.container, isSelected && styles.selectedContainer]}
+            onPress={handlePress}
+            onLongPress={() => onLongPress && onLongPress(item)}
+            delayLongPress={500}
+        >
+            {isSelectionMode && (
+                <View style={styles.checkbox}>
+                    <MaterialIcons
+                        name={isSelected ? "check-box" : "check-box-outline-blank"}
+                        size={24}
+                        color={isSelected ? "#C9B59C" : "#CCCCCC"}
+                    />
+                </View>
+            )}
             <View style={styles.info}>
                 <Text style={styles.name}>{item.name}</Text>
                 {item.category && <Text style={styles.category}>{item.category}</Text>}
@@ -30,6 +52,14 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.05,
         shadowRadius: 2,
         elevation: 1,
+    },
+    selectedContainer: {
+        backgroundColor: '#FCF8F4',
+        borderWidth: 2,
+        borderColor: '#C9B59C',
+    },
+    checkbox: {
+        marginRight: 12,
     },
     info: {
         flex: 1,

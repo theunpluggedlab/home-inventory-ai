@@ -2,10 +2,11 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, TextInput, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
+import { supabase, uploadImage } from '../lib/supabase';
 import RoomSection from '../components/RoomSection';
 import ItemRow from '../components/ItemRow';
 import ItemDetailModal from '../components/ItemDetailModal';
+import BulkEditModal from '../components/BulkEditModal';
 
 const InventoryScreen = ({ navigation }) => {
     const [data, setData] = useState([]);
@@ -27,6 +28,15 @@ const InventoryScreen = ({ navigation }) => {
     // Item Detail Modal State
     const [detailModalVisible, setDetailModalVisible] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
+
+    // Selection Mode State
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedRooms, setSelectedRooms] = useState([]);
+    const [selectedStorageUnits, setSelectedStorageUnits] = useState([]);
+    const [selectedItems, setSelectedItems] = useState([]);
+
+    // Bulk Edit Modal State
+    const [bulkEditModalVisible, setBulkEditModalVisible] = useState(false);
 
     const fetchInventory = async () => {
         try {
@@ -106,9 +116,96 @@ const InventoryScreen = ({ navigation }) => {
     }, []);
 
     const handleItemPress = (item) => {
-        console.log("Pressed item", item.name);
-        setSelectedItem(item);
-        setDetailModalVisible(true);
+        if (!isSelectionMode) {
+            console.log("Pressed item", item.name);
+            setSelectedItem(item);
+            setDetailModalVisible(true);
+        }
+    };
+
+    // ===== SELECTION MODE HANDLERS =====
+    const enterSelectionMode = (type, entity) => {
+        setIsSelectionMode(true);
+        if (type === 'room') {
+            setSelectedRooms([entity.id]);
+        } else if (type === 'storage') {
+            setSelectedStorageUnits([entity.id]);
+        } else if (type === 'item') {
+            setSelectedItems([entity.id]);
+        }
+    };
+
+    const exitSelectionMode = () => {
+        setIsSelectionMode(false);
+        setSelectedRooms([]);
+        setSelectedStorageUnits([]);
+        setSelectedItems([]);
+    };
+
+    const handleLongPressRoom = (room) => {
+        enterSelectionMode('room', room);
+    };
+
+    const handleLongPressStorage = (unit) => {
+        enterSelectionMode('storage', unit);
+    };
+
+    const handleLongPressItem = (item) => {
+        enterSelectionMode('item', item);
+    };
+
+    const handleToggleSelectRoom = (roomId) => {
+        setSelectedRooms(prev =>
+            prev.includes(roomId)
+                ? prev.filter(id => id !== roomId)
+                : [...prev, roomId]
+        );
+    };
+
+    const handleToggleSelectStorage = (storageId) => {
+        setSelectedStorageUnits(prev =>
+            prev.includes(storageId)
+                ? prev.filter(id => id !== storageId)
+                : [...prev, storageId]
+        );
+    };
+
+    const handleToggleSelectItem = (item) => {
+        setSelectedItems(prev =>
+            prev.includes(item.id)
+                ? prev.filter(id => id !== item.id)
+                : [...prev, item.id]
+        );
+    };
+
+    const handleSelectAll = () => {
+        // Determine what to select all based on current selection context
+        if (selectedItems.length > 0 || (selectedRooms.length === 0 && selectedStorageUnits.length === 0)) {
+            // Select all items
+            const allItemIds = [];
+            data.forEach(room => {
+                room.storage?.forEach(unit => {
+                    unit.items?.forEach(item => {
+                        allItemIds.push(item.id);
+                    });
+                });
+            });
+            unsortedItems.forEach(item => allItemIds.push(item.id));
+            setSelectedItems(allItemIds);
+        } else if (selectedRooms.length > 0) {
+            // Select all rooms
+            const allRoomIds = data.map(room => room.id);
+            setSelectedRooms(allRoomIds);
+        } else if (selectedStorageUnits.length > 0) {
+            // Select all storage units
+            const allStorageIds = [];
+            data.forEach(room => {
+                room.storage?.forEach(unit => {
+                    allStorageIds.push(unit.id);
+                });
+            });
+            setSelectedStorageUnits(allStorageIds);
+        }
     };
 
     // Delete Room - with safety for items
@@ -262,10 +359,206 @@ const InventoryScreen = ({ navigation }) => {
         }
     };
 
+    // ===== BULK OPERATIONS =====
+    const handleBulkDelete = async () => {
+        const totalSelected = selectedRooms.length + selectedStorageUnits.length + selectedItems.length;
+
+        Alert.alert(
+            "Confirm Bulk Delete",
+            `Are you sure you want to delete the selected items?\n\nRooms: ${selectedRooms.length}\nStorage Units: ${selectedStorageUnits.length}\nItems: ${selectedItems.length}`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            let deletedRooms = 0;
+                            let skippedRooms = 0;
+                            let deletedStorage = 0;
+                            let skippedStorage = 0;
+
+                            // BULK DELETE ROOMS - with safety check
+                            if (selectedRooms.length > 0) {
+                                for (const roomId of selectedRooms) {
+                                    // Check if room has items
+                                    const { data: storageUnits } = await supabase
+                                        .from('storage_units')
+                                        .select('id')
+                                        .eq('room_id', roomId);
+
+                                    if (storageUnits && storageUnits.length > 0) {
+                                        const storageIds = storageUnits.map(u => u.id);
+                                        const { data: items } = await supabase
+                                            .from('items')
+                                            .select('id')
+                                            .in('storage_id', storageIds);
+
+                                        if (items && items.length > 0) {
+                                            skippedRooms++;
+                                            continue; // Skip this room
+                                        }
+                                    }
+
+                                    // Room is empty, safe to delete
+                                    const { error } = await supabase
+                                        .from('rooms')
+                                        .delete()
+                                        .eq('id', roomId);
+
+                                    if (!error) deletedRooms++;
+                                }
+                            }
+
+                            // BULK DELETE STORAGE UNITS - with safety check
+                            if (selectedStorageUnits.length > 0) {
+                                for (const storageId of selectedStorageUnits) {
+                                    // Check if storage has items
+                                    const { data: items } = await supabase
+                                        .from('items')
+                                        .select('id')
+                                        .eq('storage_id', storageId);
+
+                                    if (items && items.length > 0) {
+                                        skippedStorage++;
+                                        continue; // Skip this storage
+                                    }
+
+                                    // Storage is empty, safe to delete
+                                    const { error } = await supabase
+                                        .from('storage_units')
+                                        .delete()
+                                        .eq('id', storageId);
+
+                                    if (!error) deletedStorage++;
+                                }
+                            }
+
+                            // BULK DELETE ITEMS
+                            if (selectedItems.length > 0) {
+                                const { error } = await supabase
+                                    .from('items')
+                                    .delete()
+                                    .in('id', selectedItems);
+
+                                if (error) throw error;
+                            }
+
+                            // Build result message
+                            let message = [];
+                            if (selectedItems.length > 0) {
+                                message.push(`Deleted ${selectedItems.length} item${selectedItems.length !== 1 ? 's' : ''}.`);
+                            }
+                            if (deletedRooms > 0 || skippedRooms > 0) {
+                                message.push(`Deleted ${deletedRooms} empty room${deletedRooms !== 1 ? 's' : ''}.`);
+                                if (skippedRooms > 0) {
+                                    message.push(`${skippedRooms} room${skippedRooms !== 1 ? 's' : ''} skipped (contains items).`);
+                                }
+                            }
+                            if (deletedStorage > 0 || skippedStorage > 0) {
+                                message.push(`Deleted ${deletedStorage} empty storage unit${deletedStorage !== 1 ? 's' : ''}.`);
+                                if (skippedStorage > 0) {
+                                    message.push(`${skippedStorage} storage unit${skippedStorage !== 1 ? 's' : ''} skipped (contains items).`);
+                                }
+                            }
+
+                            Alert.alert("Bulk Delete Complete", message.join('\n'));
+                            exitSelectionMode();
+                            fetchInventory();
+                        } catch (err) {
+                            Alert.alert("Error", "Failed to delete: " + err.message);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleBulkMove = () => {
+        if (selectedItems.length === 0) {
+            Alert.alert("No Items Selected", "Please select items to move");
+            return;
+        }
+
+        setSelectedLocation(null);
+        setMoveModalVisible(true);
+    };
+
+    const handleBulkMoveSubmit = async () => {
+        if (!selectedLocation) {
+            Alert.alert("Error", "Please select a location");
+            return;
+        }
+
+        try {
+            const { error } = await supabase
+                .from('items')
+                .update({ storage_id: selectedLocation.id })
+                .in('id', selectedItems);
+
+            if (error) throw error;
+
+            Alert.alert("Success", `${selectedItems.length} item${selectedItems.length !== 1 ? 's' : ''} moved to ${selectedLocation.label}`);
+            setMoveModalVisible(false);
+            exitSelectionMode();
+            fetchInventory();
+        } catch (err) {
+            Alert.alert("Error", "Failed to move items: " + err.message);
+        }
+    };
+
+    const handleBulkEdit = () => {
+        if (selectedItems.length === 0) {
+            Alert.alert("No Items Selected", "Please select items to edit");
+            return;
+        }
+        setBulkEditModalVisible(true);
+    };
+
+    const handleBulkEditSubmit = async (updates) => {
+        try {
+            const updateData = {};
+            if (updates.name) updateData.name = updates.name;
+
+            if (updates.photo) {
+                // Upload photo first
+                const publicUrl = await uploadImage(updates.photo);
+                updateData.image_url = publicUrl;
+            }
+
+            const { error } = await supabase
+                .from('items')
+                .update(updateData)
+                .in('id', selectedItems);
+
+            if (error) throw error;
+
+            Alert.alert("Success", `${selectedItems.length} item${selectedItems.length !== 1 ? 's' : ''} updated successfully!`);
+            exitSelectionMode();
+            fetchInventory();
+        } catch (err) {
+            Alert.alert("Error", "Failed to update items: " + err.message);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
             <View style={styles.header}>
-                <Text style={styles.title}>Inventory</Text>
+                {isSelectionMode ? (
+                    <View style={styles.selectionHeader}>
+                        <TouchableOpacity onPress={exitSelectionMode}>
+                            <MaterialIcons name="close" size={24} color="#2D2D2D" />
+                        </TouchableOpacity>
+                        <Text style={styles.selectionTitle}>
+                            {selectedRooms.length + selectedStorageUnits.length + selectedItems.length} Selected
+                        </Text>
+                        <TouchableOpacity onPress={handleSelectAll}>
+                            <Text style={styles.selectAllBtn}>Select All</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <Text style={styles.title}>Inventory</Text>
+                )}
             </View>
 
             {loading ? (
@@ -291,14 +584,23 @@ const InventoryScreen = ({ navigation }) => {
                             </Text>
                             {unsortedItems.map(item => (
                                 <View key={item.id} style={styles.unsortedItemRow}>
-                                    <ItemRow item={item} onPress={() => handleItemPress(item)} />
-                                    <TouchableOpacity
-                                        style={styles.moveBtn}
-                                        onPress={() => handleMoveItem(item)}
-                                    >
-                                        <MaterialIcons name="drive-file-move" size={20} color="white" />
-                                        <Text style={styles.moveBtnTxt}>Move</Text>
-                                    </TouchableOpacity>
+                                    <ItemRow
+                                        item={item}
+                                        onPress={() => handleItemPress(item)}
+                                        isSelectionMode={isSelectionMode}
+                                        isSelected={selectedItems.includes(item.id)}
+                                        onLongPress={handleLongPressItem}
+                                        onToggleSelect={handleToggleSelectItem}
+                                    />
+                                    {!isSelectionMode && (
+                                        <TouchableOpacity
+                                            style={styles.moveBtn}
+                                            onPress={() => handleMoveItem(item)}
+                                        >
+                                            <MaterialIcons name="drive-file-move" size={20} color="white" />
+                                            <Text style={styles.moveBtnTxt}>Move</Text>
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
                             ))}
                         </View>
@@ -320,6 +622,16 @@ const InventoryScreen = ({ navigation }) => {
                                 onEditRoom={handleEditRoom}
                                 onDeleteStorageUnit={handleDeleteStorageUnit}
                                 onEditStorageUnit={handleEditStorageUnit}
+                                isSelectionMode={isSelectionMode}
+                                selectedRooms={selectedRooms}
+                                selectedStorageUnits={selectedStorageUnits}
+                                selectedItems={selectedItems}
+                                onLongPressRoom={handleLongPressRoom}
+                                onLongPressStorage={handleLongPressStorage}
+                                onLongPressItem={handleLongPressItem}
+                                onToggleSelectRoom={handleToggleSelectRoom}
+                                onToggleSelectStorage={handleToggleSelectStorage}
+                                onToggleSelectItem={handleToggleSelectItem}
                             />
                         ))
                     )}
@@ -373,7 +685,9 @@ const InventoryScreen = ({ navigation }) => {
                         </View>
 
                         <Text style={styles.modalSubtitle}>
-                            Moving: {itemToMove?.name}
+                            {isSelectionMode && selectedItems.length > 0
+                                ? `Moving ${selectedItems.length} item${selectedItems.length !== 1 ? 's' : ''}`
+                                : `Moving: ${itemToMove?.name}`}
                         </Text>
 
                         <Text style={styles.sectionLabel}>Select Location:</Text>
@@ -408,9 +722,13 @@ const InventoryScreen = ({ navigation }) => {
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={styles.submitBtn}
-                                onPress={handleMoveSubmit}
+                                onPress={isSelectionMode && selectedItems.length > 0 ? handleBulkMoveSubmit : handleMoveSubmit}
                             >
-                                <Text style={styles.submitBtnTxt}>Move Here</Text>
+                                <Text style={styles.submitBtnTxt}>
+                                    {isSelectionMode && selectedItems.length > 0
+                                        ? `Move ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''}`
+                                        : 'Move Here'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -427,6 +745,55 @@ const InventoryScreen = ({ navigation }) => {
                     fetchLocations();
                 }}
             />
+
+            {/* Bulk Edit Modal */}
+            <BulkEditModal
+                visible={bulkEditModalVisible}
+                selectedCount={selectedItems.length}
+                onClose={() => setBulkEditModalVisible(false)}
+                onSubmit={handleBulkEditSubmit}
+            />
+
+            {/* Bulk Action Bar */}
+            {isSelectionMode && (
+                <View style={styles.bulkActionBar}>
+                    <TouchableOpacity
+                        style={styles.actionBarBtn}
+                        onPress={exitSelectionMode}
+                    >
+                        <MaterialIcons name="close" size={20} color="#666" />
+                        <Text style={styles.actionBarBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    {selectedItems.length > 0 && (
+                        <>
+                            <TouchableOpacity
+                                style={[styles.actionBarBtn, styles.actionBarBtnPrimary]}
+                                onPress={handleBulkMove}
+                            >
+                                <MaterialIcons name="drive-file-move" size={20} color="white" />
+                                <Text style={styles.actionBarBtnTextWhite}>Move</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.actionBarBtn, styles.actionBarBtnPrimary]}
+                                onPress={handleBulkEdit}
+                            >
+                                <MaterialIcons name="edit" size={20} color="white" />
+                                <Text style={styles.actionBarBtnTextWhite}>Edit</Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+
+                    <TouchableOpacity
+                        style={[styles.actionBarBtn, styles.actionBarBtnDanger]}
+                        onPress={handleBulkDelete}
+                    >
+                        <MaterialIcons name="delete" size={20} color="white" />
+                        <Text style={styles.actionBarBtnTextWhite}>Delete</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
         </SafeAreaView>
     );
 };
@@ -605,6 +972,69 @@ const styles = StyleSheet.create({
     submitBtnTxt: {
         color: 'white',
         fontWeight: '600',
+    },
+    // Selection Mode Styles
+    selectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    selectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#2D2D2D',
+        flex: 1,
+        textAlign: 'center',
+    },
+    selectAllBtn: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#C9B59C',
+    },
+    // Bulk Action Bar
+    bulkActionBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'white',
+        flexDirection: 'row',
+        padding: 16,
+        paddingBottom: 32,
+        gap: 8,
+        borderTopWidth: 1,
+        borderTopColor: '#EFE9E3',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    actionBarBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        padding: 12,
+        borderRadius: 8,
+        backgroundColor: '#F5F5F5',
+        flex: 1,
+    },
+    actionBarBtnPrimary: {
+        backgroundColor: '#C9B59C',
+    },
+    actionBarBtnDanger: {
+        backgroundColor: '#FF6B6B',
+    },
+    actionBarBtnText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#666',
+    },
+    actionBarBtnTextWhite: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'white',
     },
 });
 

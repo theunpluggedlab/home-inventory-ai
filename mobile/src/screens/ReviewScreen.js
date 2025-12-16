@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import * as FileSystem from 'expo-file-system';
 import { View, Text, Image, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase, ensureAuthenticatedUser, uploadImage } from '../lib/supabase';
