@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { analyzeImageWithGemini } from '../lib/gemini';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
@@ -22,7 +22,7 @@ const ReviewScreen = ({ route, navigation }) => {
     const runAnalysis = async () => {
         try {
             setAnalyzing(true);
-            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: FileSystem.EncodingType.Base64 });
+            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
 
             // Call Gemini
             const detectedItems = await analyzeImageWithGemini(base64);
@@ -66,7 +66,7 @@ const ReviewScreen = ({ route, navigation }) => {
         try {
             // 1. Upload Image (Once for the batch)
             const fileName = `scans/${Date.now()}.jpg`;
-            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: FileSystem.EncodingType.Base64 });
+            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
 
             const { error: uploadError } = await supabase.storage
                 .from('inventory-images')
