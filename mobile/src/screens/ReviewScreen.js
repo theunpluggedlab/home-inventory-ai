@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../lib/supabase';
+import { supabase, ensureAuthenticatedUser } from '../lib/supabase';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { analyzeImageWithGemini } from '../lib/gemini';
@@ -86,11 +86,14 @@ const ReviewScreen = ({ route, navigation }) => {
         }
 
         try {
+            // 0. Get Auth User
+            const userId = await ensureAuthenticatedUser();
+
             // 1. Create or Find Room
             // For simplicity, we just create a new room. In a real app we might search first.
             const { data: roomData, error: roomError } = await supabase
                 .from('rooms')
-                .insert({ name: newRoomName, user_id: 'offline_user_123' })
+                .insert({ name: newRoomName, user_id: userId })
                 .select()
                 .single();
 
@@ -99,7 +102,7 @@ const ReviewScreen = ({ route, navigation }) => {
             // 2. Create Storage Unit
             const { data: unitData, error: unitError } = await supabase
                 .from('storage_units')
-                .insert({ name: newUnitName, room_id: roomData.id, user_id: 'offline_user_123' })
+                .insert({ name: newUnitName, room_id: roomData.id, user_id: userId })
                 .select()
                 .single();
 
@@ -152,6 +155,9 @@ const ReviewScreen = ({ route, navigation }) => {
 
         setSaving(true);
         try {
+            // 0. Get Auth User
+            const userId = await ensureAuthenticatedUser();
+
             // 1. Upload Image (Once for the batch)
             const fileName = `scans/${Date.now()}.jpg`;
             const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
@@ -174,7 +180,7 @@ const ReviewScreen = ({ route, navigation }) => {
                 image_url: publicUrl,
                 storage_id: selectedLocation.id,
                 detected_labels: ["ai-import"],
-                user_id: 'offline_user_123'
+                user_id: userId
             }));
 
             const { error: dbError } = await supabase.from('items').insert(records);
