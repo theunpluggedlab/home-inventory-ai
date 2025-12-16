@@ -186,8 +186,28 @@ const ReviewScreen = ({ route, navigation }) => {
 
             if (dbError) throw dbError;
 
-            Alert.alert("Success", `Saved ${items.length} items to ${selectedLocation.name}!`);
-            navigation.navigate('Main', { screen: 'Home' });
+            // Success! Show alert with callback to clear state and navigate
+            const itemCount = items.length;
+            const locationName = selectedLocation.name;
+
+            Alert.alert(
+                "Success",
+                `Saved ${itemCount} items to ${locationName}!`,
+                [
+                    {
+                        text: "OK",
+                        onPress: () => {
+                            // Clear state
+                            setItems([]);
+                            setSelectedLocation(null);
+                            // Close all modals
+                            setLocationModalVisible(false);
+                            // Navigate to Home
+                            navigation.navigate('Main', { screen: 'Home' });
+                        }
+                    }
+                ]
+            );
 
         } catch (err) {
             console.error(err);

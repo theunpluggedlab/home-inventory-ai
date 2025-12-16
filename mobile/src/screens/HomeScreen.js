@@ -1,7 +1,8 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
@@ -21,12 +22,12 @@ const HomeScreen = ({ navigation }) => {
         if (data) setStats(prev => ({ ...prev, recent: data }));
     };
 
-    useEffect(() => {
-        const unsubscribe = navigation.addListener('focus', () => {
+    // Auto-refresh when screen comes into focus
+    useFocusEffect(
+        React.useCallback(() => {
             fetchStats();
-        });
-        return unsubscribe;
-    }, [navigation]);
+        }, [])
+    );
 
     const onScanPress = async () => {
         const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
