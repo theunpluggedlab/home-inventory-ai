@@ -14,6 +14,7 @@ const ReviewScreen = ({ route, navigation }) => {
     const [items, setItems] = useState([]);
     const [analyzing, setAnalyzing] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
 
     useEffect(() => {
         runAnalysis();
@@ -38,6 +39,7 @@ const ReviewScreen = ({ route, navigation }) => {
             console.log("Analysis error:", error);
             // Show the actual error to the user for debugging
             Alert.alert("Analysis Failed", error.message || JSON.stringify(error));
+            setErrorMessage(error.message || "Unknown Error");
             setItems([{ name: 'Error scanning item', category: 'General', quantity: 1 }]);
         } finally {
             setAnalyzing(false);
@@ -166,6 +168,13 @@ const ReviewScreen = ({ route, navigation }) => {
                             <Text style={styles.loadingText}>Gemini AI is scanning...</Text>
                         </View>
                     )}
+                    {/* Display Error on Screen for Debugging */}
+                    {!!errorMessage && (
+                        <View style={styles.errorContainer}>
+                            <Text style={styles.errorTitle}>Analysis Failed:</Text>
+                            <Text style={styles.errorText}>{errorMessage}</Text>
+                        </View>
+                    )}
                 </View>
 
                 {/* Items List */}
@@ -219,6 +228,17 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     loadingText: { color: 'white', marginTop: 12, fontWeight: '600' },
+    errorContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(255, 0, 0, 0.8)',
+        padding: 12,
+        alignItems: 'center',
+    },
+    errorTitle: { color: 'white', fontWeight: 'bold', fontSize: 12, marginBottom: 2 },
+    errorText: { color: 'white', fontSize: 11, textAlign: 'center' },
 
     listContainer: {
         flex: 1,

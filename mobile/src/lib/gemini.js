@@ -1,5 +1,6 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Alert } from 'react-native';
 
 // ⚠️ WARNING: In a production app, NEVER store API keys in the client code.
 // You should move this logic to a Supabase Edge Function.
@@ -10,55 +11,71 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 export const analyzeImageWithGemini = async (base64Image) => {
     if (!base64Image) return [];
 
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    console.log("🚀 Starting Gemini Analysis");
+
+    // Helper to try a specific model
+    const tryModel = async (modelName) => {
+        console.log(`🤖 Attempting model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ model: modelName });
 
         const prompt = `
-      Identify every item in this image. Read labels (like 'Tylenol', 'Neosporin', 'Band-aids') to be specific.
-      Return a clean JSON array of items with 'name', 'category' (e.g. Medicine, Electronics, Clothing, Kitchen), and estimated 'quantity' (number).
-      Do not include generic background items (like 'table', 'floor').
-      
-      Example output format:
-      [
-        { "name": "Advil Liqui-Gels", "category": "Medicine", "quantity": 1 },
-        { "name": "AA Batteries", "category": "Electronics", "quantity": 4 }
-      ]
-      
-      Return ONLY the JSON array. Do not use Markdown formatting.
-    `;
+            You are a specific inventory assistant.
+            Identify every item in this image. Read labels (like 'Tylenol', 'Neosporin', 'Band-aids') to be specific.
+            Return a clean JSON array of items with 'name', 'category' (e.g. Medicine, Electronics, Clothing, Kitchen), and estimated 'quantity' (number).
+            Do not include generic background items.
+            Output ONLY a raw JSON array. No Markdown.
+            Example: [{"name": "Advil", "category": "Medicine", "quantity": 1}]
+        `;
 
-        // Gemini expects standard base64 strings (no data header)
         const imagePart = {
-            inlineData: {
-                data: base64Image,
-                mimeType: "image/jpeg",
-            },
+            inlineData: { data: base64Image, mimeType: "image/jpeg" }
         };
 
         const result = await model.generateContent([prompt, imagePart]);
-        const response = await result.response;
+        return await result.response;
+    };
+
+    try {
+        let response;
+        try {
+            // 1. Try Stable 1.5 Flash
+            response = await tryModel("gemini-1.5-flash");
+        } catch (e1) {
+            console.warn("⚠️ 1.5 Flash failed:", e1.message);
+            try {
+                // 2. Try Stable 1.5 Pro
+                response = await tryModel("gemini-1.5-pro");
+            } catch (e2) {
+                console.warn("⚠️ 1.5 Pro failed:", e2.message);
+                try {
+                    // 3. Try Legacy Vision
+                    response = await tryModel("gemini-pro-vision");
+                } catch (e3) {
+                    const msg = `ALL models failed. Last error: ${e3.message}`;
+                    console.error("❌ " + msg);
+                    Alert.alert("Debug Info", msg);
+                    throw new Error(msg);
+                }
+            }
+        }
+
         const text = response.text();
+        console.log("📩 Raw Gemini Response:", text);
 
-        console.log("Gemini Raw Response:", text);
-
-        // Clean up potential markdown code blocks
-        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        // --- Parsing Logic ---
+        let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const jsonMatch = cleanText.match(/\[.*\]/s);
+        if (jsonMatch) cleanText = jsonMatch[0];
 
         try {
             const json = JSON.parse(cleanText);
-            if (Array.isArray(json)) {
-                return json;
-            } else if (typeof json === 'object') {
-                return [json]; // Wrap single object
-            }
+            return Array.isArray(json) ? json : [json];
         } catch (e) {
-            console.error("Failed to parse Gemini JSON", e);
+            throw new Error("Failed to parse AI response: " + cleanText);
         }
-
-        return [];
 
     } catch (error) {
         console.error("Gemini Analysis Failed:", error);
-        return [];
+        throw error;
     }
 };
