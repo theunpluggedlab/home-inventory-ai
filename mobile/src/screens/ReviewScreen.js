@@ -146,7 +146,8 @@ const ReviewScreen = ({ route, navigation }) => {
         if (items.length === 0) return;
 
         // Validation: Location
-        if (!selectedLocation) {
+        if (!selectedLocation || !selectedLocation.id) {
+            Alert.alert("Error", "No Storage ID found. Please select a valid location.");
             setLocationModalVisible(true);
             return;
         }
@@ -155,30 +156,41 @@ const ReviewScreen = ({ route, navigation }) => {
         try {
             // 0. Get Auth User (only for rooms/storage_units, not items)
             console.log("Step 1: Getting authenticated user...");
-            const userId = await ensureAuthenticatedUser();
-            console.log("User ID:", userId);
+            await ensureAuthenticatedUser(); // Just ensuring auth, not using ID for items
 
             // 1. Upload Image (Once for the batch)
             console.log("Step 2: Uploading image...");
-            const publicUrl = await uploadImage(imageUri);
+            let publicUrl = null;
+            try {
+                publicUrl = await uploadImage(imageUri);
+            } catch (uploadErr) {
+                console.error("Image upload failed:", uploadErr);
+                // Continue without image or throw? Let's throw for now as it's critical
+                throw new Error("Image upload failed: " + uploadErr.message);
+            }
 
-            // 2. Prepare Bulk Insert
+            // 2. Prepare Bulk Insert - STRICT SANITIZATION
             console.log("Step 3: Preparing database insert...");
             const records = items.map(item => ({
                 name: item.name,
-                quantity: parseInt(item.quantity) || 1, // 숫자 변환 안전장치
-                category: item.category, // Removed fallback since DB might handle it or we want explicit
+                quantity: parseInt(item.quantity) || 1,
+                category: item.category || 'General',
                 storage_id: selectedLocation.id,
-                // user_id 삭제함!
                 image_url: publicUrl
+                // ABSOLUTELY NO user_id here
             }));
 
             console.log("Records to insert:", JSON.stringify(records, null, 2));
 
-            const { data: insertedData, error: dbError } = await supabase.from('items').insert(records);
+            // 3. Perform Insert
+            const { data: insertedData, error: dbError } = await supabase
+                .from('items')
+                .insert(records)
+                .select(); // Select to verify return
 
             if (dbError) {
-                console.error("Database error:", dbError);
+                console.error("Database error details:", dbError);
+                Alert.alert("Item Save Error", JSON.stringify(dbError));
                 throw new Error(`Database insert failed: ${dbError.message}`);
             }
 
@@ -209,7 +221,9 @@ const ReviewScreen = ({ route, navigation }) => {
 
         } catch (err) {
             console.error("Save Error Details:", err);
-            Alert.alert("Save Failed", err.message || JSON.stringify(err));
+            if (!err.message.includes("Database insert failed")) {
+                Alert.alert("Save Failed", err.message || JSON.stringify(err));
+            }
         } finally {
             setSaving(false);
         }
