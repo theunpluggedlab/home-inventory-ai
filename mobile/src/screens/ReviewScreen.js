@@ -154,10 +154,13 @@ const ReviewScreen = ({ route, navigation }) => {
 
         setSaving(true);
         try {
-            // 0. Get Auth User
+            // 0. Get Auth User (only for rooms/storage_units, not items)
+            console.log("Step 1: Getting authenticated user...");
             const userId = await ensureAuthenticatedUser();
+            console.log("User ID:", userId);
 
             // 1. Upload Image (Once for the batch)
+            console.log("Step 2: Uploading image...");
             const fileName = `scans/${Date.now()}.jpg`;
             const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
 
@@ -165,26 +168,40 @@ const ReviewScreen = ({ route, navigation }) => {
                 .from('inventory-images')
                 .upload(fileName, decode(base64), { contentType: 'image/jpeg' });
 
+            if (uploadError) {
+                console.error("Upload error:", uploadError);
+                throw new Error(`Image upload failed: ${uploadError.message}`);
+            }
+
             let publicUrl = null;
             if (!uploadError) {
                 const { data } = supabase.storage.from('inventory-images').getPublicUrl(fileName);
                 publicUrl = data.publicUrl;
+                console.log("Image uploaded successfully:", publicUrl);
             }
 
-            // 2. Prepare Bulk Insert using SELECTED location
+            // 2. Prepare Bulk Insert - ONLY fields that exist in items table
+            console.log("Step 3: Preparing database insert...");
             const records = items.map(item => ({
                 name: item.name,
-                quantity: Number(item.quantity) || 1,
-                category: item.category,
-                image_url: publicUrl,
+                quantity: parseInt(item.quantity) || 1,  // Convert to integer
+                category: item.category || 'General',
                 storage_id: selectedLocation.id,
-                detected_labels: ["ai-import"],
-                user_id: userId
+                image_url: publicUrl,
+                detected_labels: ["ai-import"]
+                // NOTE: NO user_id - items table doesn't have this column
             }));
 
-            const { error: dbError } = await supabase.from('items').insert(records);
+            console.log("Records to insert:", JSON.stringify(records, null, 2));
 
-            if (dbError) throw dbError;
+            const { data: insertedData, error: dbError } = await supabase.from('items').insert(records);
+
+            if (dbError) {
+                console.error("Database error:", dbError);
+                throw new Error(`Database insert failed: ${dbError.message}`);
+            }
+
+            console.log("Successfully saved items:", insertedData);
 
             // Success! Show alert with callback to clear state and navigate
             const itemCount = items.length;
@@ -210,8 +227,8 @@ const ReviewScreen = ({ route, navigation }) => {
             );
 
         } catch (err) {
-            console.error(err);
-            Alert.alert("Error", "Failed to save items.");
+            console.error("Save Error Details:", err);
+            Alert.alert("Save Failed", err.message || JSON.stringify(err));
         } finally {
             setSaving(false);
         }
