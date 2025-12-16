@@ -13,57 +13,51 @@ export const analyzeImageWithGemini = async (base64Image) => {
 
     console.log("🚀 Starting Gemini Analysis");
 
-    // Helper to try a specific model
-    const tryModel = async (modelName) => {
-        console.log(`🤖 Attempting model: ${modelName}`);
-        const model = genAI.getGenerativeModel({ model: modelName });
-
-        const prompt = `
-            You are a specific inventory assistant.
-            Identify every item in this image. Read labels (like 'Tylenol', 'Neosporin', 'Band-aids') to be specific.
-            Return a clean JSON array of items with 'name', 'category' (e.g. Medicine, Electronics, Clothing, Kitchen), and estimated 'quantity' (number).
-            Do not include generic background items.
-            Output ONLY a raw JSON array. No Markdown.
-            Example: [{"name": "Advil", "category": "Medicine", "quantity": 1}]
-        `;
-
-        const imagePart = {
-            inlineData: { data: base64Image, mimeType: "image/jpeg" }
-        };
-
-        const result = await model.generateContent([prompt, imagePart]);
-        return await result.response;
-    };
-
     try {
+        // User explicitly requested 'gemini-2.0-flash'.
+        // We also add 'gemini-2.0-flash-exp' as a fallback since that is the common API ID for the preview.
+        const modelNames = ["gemini-2.0-flash", "gemini-2.0-flash-exp"];
         let response;
-        try {
-            // 1. Try Stable 1.5 Flash
-            response = await tryModel("gemini-1.5-flash");
-        } catch (e1) {
-            console.warn("⚠️ 1.5 Flash failed:", e1.message);
+        let lastError;
+
+        for (const modelName of modelNames) {
             try {
-                // 2. Try Stable 1.5 Pro
-                response = await tryModel("gemini-1.5-pro");
-            } catch (e2) {
-                console.warn("⚠️ 1.5 Pro failed:", e2.message);
-                try {
-                    // 3. Try Legacy Vision
-                    response = await tryModel("gemini-pro-vision");
-                } catch (e3) {
-                    const msg = `ALL models failed. Last error: ${e3.message}`;
-                    console.error("❌ " + msg);
-                    Alert.alert("Debug Info", msg);
-                    throw new Error(msg);
-                }
+                console.log(`🤖 Attempting model: ${modelName}`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+
+                const prompt = `Analyze this image. return a JSON array of items found (name, category, quantity). Do not use Markdown. Example: [{"name": "Apple", "category": "Food", "quantity": 1}]`;
+
+                const imagePart = {
+                    inlineData: {
+                        data: base64Image,
+                        mimeType: "image/jpeg",
+                    },
+                };
+
+                const result = await model.generateContent([prompt, imagePart]);
+                response = await result.response;
+                // If we get here, it worked
+                break;
+            } catch (e) {
+                console.warn(`⚠️ Model ${modelName} failed:`, e.message);
+                lastError = e;
             }
+        }
+
+        if (!response) {
+            const msg = `All models failed (2.0-flash). Last error: ${lastError?.message}`;
+            console.error("❌ " + msg);
+            throw new Error(msg);
         }
 
         const text = response.text();
         console.log("📩 Raw Gemini Response:", text);
 
         // --- Parsing Logic ---
+        // Strip markdown code blocks
         let cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        // Find JSON array brackets
         const jsonMatch = cleanText.match(/\[.*\]/s);
         if (jsonMatch) cleanText = jsonMatch[0];
 

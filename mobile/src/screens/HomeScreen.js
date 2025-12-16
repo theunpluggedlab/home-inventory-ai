@@ -1,49 +1,63 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// ... existing imports
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { supabase } from '../lib/supabase';
 
 const HomeScreen = ({ navigation }) => {
     const [stats, setStats] = useState({ total: 0, recent: [] });
 
-    // Temp Debug Function
-    const checkModels = async () => {
-        const API_KEY = "AIzaSyBlN79jHSkj5BImvulotPTZBdpo6oLS6aI"; // Temporarily here for test
-        const genAI = new GoogleGenerativeAI(API_KEY);
-        try {
-            // Note: client side listModels might be restricted or require polyfill
-            // usage depends on environment. If this fails, we know it's environment/key issue.
-            // But 'listModels' is not directly on genAI instance in all SDK versions, usually on the manager.
-            // The SDK doesn't always expose listModels in the browser bundle effectively.
-            // Let's try getting a model and running a simple text prompt as a connectivity test.
-
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-            const result = await model.generateContent("Hello");
-            const response = await result.response;
-            Alert.alert("Success", "Standard Flash Model Working: " + response.text());
-        } catch (error) {
-            Alert.alert("Model check failed", error.message);
-            console.log("Model Check Error", error);
+    const fetchStats = async () => {
+        // Simple count query
+        const { count, error } = await supabase.from('items').select('*', { count: 'exact', head: true });
+        if (!error) {
+            setStats(prev => ({ ...prev, total: count }));
         }
+
+        // Recent items
+        const { data } = await supabase.from('items').select('name, room:storage_units(room:rooms(name))').order('created_at', { ascending: false }).limit(3);
+        if (data) setStats(prev => ({ ...prev, recent: data }));
     };
 
-    // ... existing code ...
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            fetchStats();
+        });
+        return unsubscribe;
+    }, [navigation]);
+
+    const onScanPress = async () => {
+        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+        if (permissionResult.granted === false) {
+            Alert.alert("Permission Required", "You need to allow camera access to scan items.");
+            return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            quality: 0.7,
+            base64: true,
+        });
+
+        if (!result.canceled) {
+            // Navigate to Review Screen with the image uri
+            navigation.navigate('ReviewItem', { imageUri: result.assets[0].uri });
+        }
+    };
 
     return (
         <SafeAreaView style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.title}>Dashboard</Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <TouchableOpacity onPress={checkModels} style={{ padding: 8, backgroundColor: '#eee', borderRadius: 8 }}>
-                        <Text style={{ fontSize: 10 }}>DEBUG MODELS</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.iconBtn}>
-                        <MaterialIcons name="settings" size={24} color="#2D2D2D" />
-                    </TouchableOpacity>
-                </View>
+                <TouchableOpacity style={styles.iconBtn}>
+                    <MaterialIcons name="settings" size={24} color="#2D2D2D" />
+                </TouchableOpacity>
             </View>
-
-            {/* ... rest of code ... */}
 
             <ScrollView contentContainerStyle={styles.content}>
 
