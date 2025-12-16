@@ -162,16 +162,15 @@ const ReviewScreen = ({ route, navigation }) => {
             console.log("Step 2: Uploading image...");
             const publicUrl = await uploadImage(imageUri);
 
-            // 2. Prepare Bulk Insert - ONLY fields that exist in items table
+            // 2. Prepare Bulk Insert
             console.log("Step 3: Preparing database insert...");
             const records = items.map(item => ({
                 name: item.name,
-                quantity: parseInt(item.quantity) || 1,  // Convert to integer
-                category: item.category || 'General',
+                quantity: parseInt(item.quantity) || 1, // 숫자 변환 안전장치
+                category: item.category, // Removed fallback since DB might handle it or we want explicit
                 storage_id: selectedLocation.id,
-                image_url: publicUrl,
-                detected_labels: ["ai-import"]
-                // NOTE: NO user_id - items table doesn't have this column
+                // user_id 삭제함!
+                image_url: publicUrl
             }));
 
             console.log("Records to insert:", JSON.stringify(records, null, 2));
