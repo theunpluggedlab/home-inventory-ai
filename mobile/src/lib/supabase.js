@@ -2,6 +2,8 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 
 const SUPABASE_URL = 'https://wubtmmdmxwjesytfyogk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1YnRtbWRteHdqZXN5dGZ5b2drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4MzQyNDQsImV4cCI6MjA4MTQxMDI0NH0.T_DlLFwHl1mPtddcpXEHMN4AO4Br2oe9XB_oyjcaJmQ';
@@ -84,3 +86,46 @@ export const ensureAuthenticatedUser = async () => {
 
     throw new Error("Authentication failed unexpectedly.");
 };
+
+/**
+ * Upload an image to Supabase Storage
+ * @param {string} uri - Local file URI (from camera or gallery)
+ * @returns {Promise<string>} - Public URL of the uploaded image
+ */
+export const uploadImage = async (uri) => {
+    try {
+        // Generate unique filename with timestamp and random string
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(7);
+        const fileName = `${timestamp}_${random}.jpg`;
+        const filePath = `items/${fileName}`;
+
+        // Read file as base64
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+            .from('item-images')
+            .upload(filePath, decode(base64), {
+                contentType: 'image/jpeg',
+                upsert: false
+            });
+
+        if (uploadError) {
+            throw new Error(`Upload failed: ${uploadError.message}`);
+        }
+
+        // Get public URL
+        const { data } = supabase.storage
+            .from('item-images')
+            .getPublicUrl(filePath);
+
+        console.log("Image uploaded successfully:", data.publicUrl);
+        return data.publicUrl;
+
+    } catch (error) {
+        console.error("Image upload error:", error);
+        throw error;
+    }
+};
+

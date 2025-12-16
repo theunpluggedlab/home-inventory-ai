@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import RoomSection from '../components/RoomSection';
 import ItemRow from '../components/ItemRow';
+import ItemDetailModal from '../components/ItemDetailModal';
 
 const InventoryScreen = ({ navigation }) => {
     const [data, setData] = useState([]);
@@ -22,6 +23,10 @@ const InventoryScreen = ({ navigation }) => {
     const [itemToMove, setItemToMove] = useState(null);
     const [locations, setLocations] = useState([]);
     const [selectedLocation, setSelectedLocation] = useState(null);
+
+    // Item Detail Modal State
+    const [detailModalVisible, setDetailModalVisible] = useState(false);
+    const [selectedItem, setSelectedItem] = useState(null);
 
     const fetchInventory = async () => {
         try {
@@ -102,6 +107,8 @@ const InventoryScreen = ({ navigation }) => {
 
     const handleItemPress = (item) => {
         console.log("Pressed item", item.name);
+        setSelectedItem(item);
+        setDetailModalVisible(true);
     };
 
     // Delete Room - with safety for items
@@ -409,6 +416,17 @@ const InventoryScreen = ({ navigation }) => {
                     </View>
                 </View>
             </Modal>
+
+            {/* Item Detail Modal */}
+            <ItemDetailModal
+                visible={detailModalVisible}
+                item={selectedItem}
+                onClose={() => setDetailModalVisible(false)}
+                onUpdate={() => {
+                    fetchInventory();
+                    fetchLocations();
+                }}
+            />
         </SafeAreaView>
     );
 };

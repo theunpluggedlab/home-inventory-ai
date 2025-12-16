@@ -10,7 +10,7 @@ const ItemRow = ({ item, onPress }) => {
                 {item.category && <Text style={styles.category}>{item.category}</Text>}
             </View>
             <View style={styles.badge}>
-                <Text style={styles.badgeText}>{item.qty}</Text>
+                <Text style={styles.badgeText}>{item.quantity || item.qty || 1}</Text>
             </View>
         </TouchableOpacity>
     );

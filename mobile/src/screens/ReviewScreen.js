@@ -2,9 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase, ensureAuthenticatedUser } from '../lib/supabase';
-import * as FileSystem from 'expo-file-system/legacy';
-import { decode } from 'base64-arraybuffer';
+import { supabase, ensureAuthenticatedUser, uploadImage } from '../lib/supabase';
 import { analyzeImageWithGemini } from '../lib/gemini';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 
@@ -161,24 +159,7 @@ const ReviewScreen = ({ route, navigation }) => {
 
             // 1. Upload Image (Once for the batch)
             console.log("Step 2: Uploading image...");
-            const fileName = `scans/${Date.now()}.jpg`;
-            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
-
-            const { error: uploadError } = await supabase.storage
-                .from('inventory-images')
-                .upload(fileName, decode(base64), { contentType: 'image/jpeg' });
-
-            if (uploadError) {
-                console.error("Upload error:", uploadError);
-                throw new Error(`Image upload failed: ${uploadError.message}`);
-            }
-
-            let publicUrl = null;
-            if (!uploadError) {
-                const { data } = supabase.storage.from('inventory-images').getPublicUrl(fileName);
-                publicUrl = data.publicUrl;
-                console.log("Image uploaded successfully:", publicUrl);
-            }
+            const publicUrl = await uploadImage(imageUri);
 
             // 2. Prepare Bulk Insert - ONLY fields that exist in items table
             console.log("Step 3: Preparing database insert...");
