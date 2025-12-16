@@ -16,44 +16,70 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 export const ensureAuthenticatedUser = async () => {
-    // 1. Check if session/user exists
+    // 1. Check if session/user exists locally
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
         console.log("Existing user found:", session.user.id);
         return session.user.id;
     }
 
-    // 2. Try Login (Demo User)
-    const email = "demo@test.com";
-    const password = "demo123456";
+    // 2. Credentials (Stronger to pass policies)
+    const email = "admin_user@inventoryapp.com";
+    const password = "SecurePass_2025!";
 
-    console.log("Attempting silent login...");
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-    });
+    console.log(`Attempting Auto-Login with ${email}...`);
 
-    if (signInData.user) {
-        console.log("Silent login success:", signInData.user.id);
-        return signInData.user.id;
-    }
+    try {
+        // 3. Try Auto-Login First
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+        });
 
-    // 3. If login fails, Try Signup
-    console.log("Login failed or user missing. Attempting silent signup...");
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-    });
+        if (signInData?.user) {
+            console.log("Silent login success:", signInData.user.id);
+            return signInData.user.id;
+        }
 
-    if (signUpError) {
-        console.error("Silent Auth Failed:", signUpError);
-        // Fallback: If signup fails (maybe user exists but pw wrong?), just throw
-        throw new Error("Could not authenticate user. " + signUpError.message);
-    }
+        if (signInError) {
+            console.log("Login failed (User might not exist), attempting Silent Signup...", signInError.message);
+        }
 
-    if (signUpData.user) {
-        console.log("Silent signup success:", signUpData.user.id);
-        return signUpData.user.id;
+        // 4. Try Signup if Login failed
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+        });
+
+        if (signUpData?.user) {
+            console.log("Silent signup success:", signUpData.user.id);
+            return signUpData.user.id;
+        }
+
+        // 5. Handle "User already registered" edge case
+        // If sign up failed because user exists, but sign in also failed previously,
+        // it might be a race condition or network blip. Try Sign In ONE more time.
+        if (signUpError && signUpError.message.toLowerCase().includes("already registered")) {
+            console.log("User already exists, retrying login...");
+            const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
+                email,
+                password
+            });
+
+            if (retryData?.user) {
+                return retryData.user.id;
+            }
+            if (retryError) throw retryError;
+        }
+
+        if (signUpError) throw signUpError;
+
+    } catch (e) {
+        console.error("Silent Auth Critical Failure:", e);
+        // Alert the user so they know why saving is failing
+        // Need to import Alert if we use it, but this file doesn't have React imports.
+        // We will just throw with a clear message that the UI catches.
+        throw new Error(`Auth Failed: ${e.message || "Unknown error"}. Check Supabase "Confirm Email" settings.`);
     }
 
     throw new Error("Authentication failed unexpectedly.");

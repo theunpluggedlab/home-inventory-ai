@@ -102,7 +102,7 @@ const ReviewScreen = ({ route, navigation }) => {
             // 2. Create Storage Unit
             const { data: unitData, error: unitError } = await supabase
                 .from('storage_units')
-                .insert({ name: newUnitName, room_id: roomData.id, user_id: userId })
+                .insert({ name: newUnitName, room_id: roomData.id })
                 .select()
                 .single();
 
@@ -121,8 +121,7 @@ const ReviewScreen = ({ route, navigation }) => {
             setNewRoomName("");
             setNewUnitName("");
 
-            // Auto-close modal if we came from there
-            // setLocationModalVisible(false); // Optional: keep open to confirm? No, better feedback.
+            Alert.alert("Success", "Location created!");
 
         } catch (err) {
             Alert.alert("Error", "Failed to create location: " + err.message);
