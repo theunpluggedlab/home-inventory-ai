@@ -14,7 +14,11 @@ import ReviewScreen from './src/screens/ReviewScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 function MainTabs() {
+    const insets = useSafeAreaInsets();
+
     return (
         <Tab.Navigator
             screenOptions={{
@@ -23,8 +27,10 @@ function MainTabs() {
                     borderTopWidth: 0,
                     elevation: 0,
                     backgroundColor: 'rgba(255,255,255,0.9)',
-                    height: 60,
-                    paddingBottom: 10,
+                    // Robust height calculation for overlapping home indicators
+                    height: 60 + Math.max(insets.bottom, 20),
+                    paddingBottom: Math.max(insets.bottom, 20),
+                    paddingTop: 10,
                 },
                 tabBarActiveTintColor: '#bba285',
                 tabBarInactiveTintColor: '#999999',

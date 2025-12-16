@@ -90,7 +90,7 @@ const ReviewScreen = ({ route, navigation }) => {
             // For simplicity, we just create a new room. In a real app we might search first.
             const { data: roomData, error: roomError } = await supabase
                 .from('rooms')
-                .insert({ name: newRoomName })
+                .insert({ name: newRoomName, user_id: 'offline_user_123' })
                 .select()
                 .single();
 
@@ -99,7 +99,7 @@ const ReviewScreen = ({ route, navigation }) => {
             // 2. Create Storage Unit
             const { data: unitData, error: unitError } = await supabase
                 .from('storage_units')
-                .insert({ name: newUnitName, room_id: roomData.id })
+                .insert({ name: newUnitName, room_id: roomData.id, user_id: 'offline_user_123' })
                 .select()
                 .single();
 
@@ -173,7 +173,8 @@ const ReviewScreen = ({ route, navigation }) => {
                 category: item.category,
                 image_url: publicUrl,
                 storage_id: selectedLocation.id,
-                detected_labels: ["ai-import"]
+                detected_labels: ["ai-import"],
+                user_id: 'offline_user_123'
             }));
 
             const { error: dbError } = await supabase.from('items').insert(records);
