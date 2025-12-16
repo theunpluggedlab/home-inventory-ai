@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import * as FileSystem from 'expo-file-system/legacy';
-import { EncodingType } from 'expo-file-system';
 import { View, Text, Image, TextInput, StyleSheet, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, FlatList, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase, ensureAuthenticatedUser, uploadImage } from '../lib/supabase';
@@ -59,7 +58,7 @@ const ReviewScreen = ({ route, navigation }) => {
     const runAnalysis = async () => {
         try {
             setAnalyzing(true);
-            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: EncodingType.Base64 });
+            const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
 
             // Call Gemini
             const detectedItems = await analyzeImageWithGemini(base64);
@@ -203,7 +202,7 @@ const ReviewScreen = ({ route, navigation }) => {
                             // Close all modals
                             setLocationModalVisible(false);
                             // Navigate to Home
-                            navigation.navigate('Main', { screen: 'Home' });
+                            navigation.popToTop();
                         }
                     }
                 ]
