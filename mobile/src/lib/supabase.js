@@ -5,8 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 
-const SUPABASE_URL = 'https://wubtmmdmxwjesytfyogk.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1YnRtbWRteHdqZXN5dGZ5b2drIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4MzQyNDQsImV4cCI6MjA4MTQxMDI0NH0.T_DlLFwHl1mPtddcpXEHMN4AO4Br2oe9XB_oyjcaJmQ';
+const SUPABASE_URL = 'https://ufxozegsvqtfyralmqte.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVmeG96ZWdzdnF0ZnlyYWxtcXRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU5NzUwMjksImV4cCI6MjA4MTU1MTAyOX0.MlTeqtYer40p1LhdyelZdhJRfTaoneKWW9a2cE8k6D4';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {

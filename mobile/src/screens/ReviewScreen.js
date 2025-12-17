@@ -81,7 +81,7 @@ const ReviewScreen = ({ route, navigation }) => {
     const createLocation = async () => {
         if (!newRoomName || !newUnitName) {
             Alert.alert("Required", "Please enter both Room and Unit/Container name.");
-            return;
+            return null; // Return null on specific error
         }
 
         try {
@@ -121,10 +121,17 @@ const ReviewScreen = ({ route, navigation }) => {
             setNewUnitName("");
 
             Alert.alert("Success", "Location created!");
+            return newLoc; // Return the new location!
 
         } catch (err) {
             Alert.alert("Error", "Failed to create location: " + err.message);
+            return null;
         }
+    };
+
+    // Wrapper for the button press which might expect void
+    const handleCreateAndSelect = async () => {
+        await createLocation();
     };
 
     const updateItem = (index, field, value) => {
@@ -142,11 +149,14 @@ const ReviewScreen = ({ route, navigation }) => {
         setItems([...items, { name: '', category: 'General', quantity: 1 }]);
     };
 
-    const onSaveAll = async () => {
+    const onSaveAll = async (overrideLocationId = null) => {
         if (items.length === 0) return;
 
+        // Use override ID if provided, otherwise check state
+        const targetId = overrideLocationId || selectedLocation?.id;
+
         // Validation: Location
-        if (!selectedLocation || !selectedLocation.id) {
+        if (!targetId) {
             Alert.alert("Error", "No Storage ID found. Please select a valid location.");
             setLocationModalVisible(true);
             return;
@@ -173,14 +183,18 @@ const ReviewScreen = ({ route, navigation }) => {
             console.log("Step 3: Preparing database insert...");
             const records = items.map(item => ({
                 name: item.name,
-                quantity: parseInt(item.quantity) || 1,
+                // SAFETY: FORCE QUANTITY TO 1 FOR DEBUGGING
+                quantity: 1,
+                // quantity: (typeof item.quantity === 'object' || isNaN(parseInt(item.quantity))) ? 1 : parseInt(item.quantity),
+
                 category: item.category || 'General',
-                storage_id: selectedLocation.id,
+                storage_id: targetId,
                 image_url: publicUrl
                 // ABSOLUTELY NO user_id here
             }));
 
             console.log("Records to insert:", JSON.stringify(records, null, 2));
+            // Alert.alert("Debug Payload", JSON.stringify(records)); // Uncomment to see payload on screen
 
             // 3. Perform Insert
             const { data: insertedData, error: dbError } = await supabase
@@ -190,7 +204,7 @@ const ReviewScreen = ({ route, navigation }) => {
 
             if (dbError) {
                 console.error("Database error details:", dbError);
-                Alert.alert("Item Save Error", JSON.stringify(dbError));
+                Alert.alert("Item Save Error (DB)", JSON.stringify(dbError));
                 throw new Error(`Database insert failed: ${dbError.message}`);
             }
 
@@ -201,7 +215,7 @@ const ReviewScreen = ({ route, navigation }) => {
             const locationName = selectedLocation.name;
 
             Alert.alert(
-                "Success",
+                "Success (v3)",
                 `Saved ${itemCount} items to ${locationName}!`,
                 [
                     {
@@ -260,6 +274,7 @@ const ReviewScreen = ({ route, navigation }) => {
                             style={[styles.input, { textAlign: 'center' }]}
                             value={String(item.quantity)}
                             keyboardType="numeric"
+                            // CRITICAL: Ensure this is onChangeText, NOT onChange
                             onChangeText={(txt) => updateItem(index, 'quantity', txt)}
                         />
                     </View>
@@ -319,8 +334,8 @@ const ReviewScreen = ({ route, navigation }) => {
 
                 {/* Footer Buttons */}
                 <View style={styles.footer}>
-                    <TouchableOpacity style={[styles.btn, (saving || analyzing) && styles.disabled]} onPress={onSaveAll} disabled={saving || analyzing}>
-                        <Text style={styles.btnTxt}>{saving ? "Saving..." : "Save to Inventory"}</Text>
+                    <TouchableOpacity style={[styles.btn, (saving || analyzing) && styles.disabled]} onPress={() => onSaveAll()} disabled={saving || analyzing}>
+                        <Text style={styles.btnTxt}>{saving ? "Saving..." : "Save (Debug V3)"}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation.goBack()}>
@@ -364,7 +379,7 @@ const ReviewScreen = ({ route, navigation }) => {
                                         <TouchableOpacity style={styles.outlineBtn} onPress={() => setIsCreatingLocation(false)}>
                                             <Text style={styles.outlineBtnTxt}>Back</Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity style={styles.primaryBtn} onPress={createLocation}>
+                                        <TouchableOpacity style={styles.primaryBtn} onPress={handleCreateAndSelect}>
                                             <Text style={styles.primaryBtnTxt}>Create & Select</Text>
                                         </TouchableOpacity>
                                     </View>
