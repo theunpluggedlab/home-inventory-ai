@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, FlatList, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
+import { supabase, ensureAuthenticatedUser } from '../lib/supabase';
 import ItemRow from '../components/ItemRow';
 import ItemDetailModal from '../components/ItemDetailModal';
 
@@ -20,8 +20,15 @@ const SearchScreen = () => {
     const [locations, setLocations] = useState([]);
     const [selectedLocation, setSelectedLocation] = useState(null);
 
+    // Note: React 18+ strict mode might call useEffect twice, but auth check is safe.
     useEffect(() => {
-        fetchLocations();
+        // Initial load
+        (async () => {
+            try {
+                await ensureAuthenticatedUser();
+                fetchLocations();
+            } catch (e) { console.log(e); }
+        })();
     }, []);
 
     const fetchLocations = async () => {

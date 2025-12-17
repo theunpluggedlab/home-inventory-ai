@@ -5,21 +5,35 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { supabase } from '../lib/supabase';
+import { supabase, ensureAuthenticatedUser } from '../lib/supabase';
 
 const HomeScreen = ({ navigation }) => {
     const [stats, setStats] = useState({ total: 0, recent: [] });
+    const [loading, setLoading] = useState(true);
 
     const fetchStats = async () => {
-        // Simple count query
-        const { count, error } = await supabase.from('items').select('*', { count: 'exact', head: true });
-        if (!error) {
-            setStats(prev => ({ ...prev, total: count }));
-        }
+        try {
+            await ensureAuthenticatedUser();
 
-        // Recent items
-        const { data } = await supabase.from('items').select('name, room:storage_units(room:rooms(name))').order('created_at', { ascending: false }).limit(3);
-        if (data) setStats(prev => ({ ...prev, recent: data }));
+            // Simple count query
+            const { count, error } = await supabase.from('items').select('*', { count: 'exact', head: true });
+            if (!error) {
+                setStats(prev => ({ ...prev, total: count || 0 }));
+            }
+
+            // Recent items
+            const { data } = await supabase
+                .from('items')
+                .select('name, room:storage_units(room:rooms(name))')
+                .order('created_at', { ascending: false })
+                .limit(3);
+
+            if (data) setStats(prev => ({ ...prev, recent: data }));
+        } catch (err) {
+            console.log("Error loading dashboard:", err);
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Auto-refresh when screen comes into focus
@@ -64,14 +78,14 @@ const HomeScreen = ({ navigation }) => {
 
                 {/* Stats */}
                 <View style={styles.statsContainer}>
-                    <View style={styles.statCard}>
+                    <TouchableOpacity style={styles.statCard} onPress={() => navigation.navigate('Inventory')}>
                         <Text style={styles.statValue}>{stats.total}</Text>
                         <Text style={styles.statLabel}>Total Items</Text>
-                    </View>
-                    <View style={styles.statCard}>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.statCard} onPress={() => navigation.navigate('Inventory')}>
                         <Text style={styles.statValue}>{stats.recent.length}</Text>
                         <Text style={styles.statLabel}>Recent Adds</Text>
-                    </View>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Scan Button */}
@@ -87,7 +101,7 @@ const HomeScreen = ({ navigation }) => {
                 <View style={styles.recentSection}>
                     <Text style={styles.sectionTitle}>Recently Added</Text>
                     {stats.recent.map((item, idx) => (
-                        <View key={idx} style={styles.recentItem}>
+                        <TouchableOpacity key={idx} style={styles.recentItem} onPress={() => navigation.navigate('Inventory')}>
                             <View style={styles.recentIcon}>
                                 <MaterialIcons name="chair" size={24} color="#bba285" />
                             </View>
@@ -97,7 +111,7 @@ const HomeScreen = ({ navigation }) => {
                                     {item.room?.room?.name || 'Unknown'}
                                 </Text>
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     ))}
                 </View>
 

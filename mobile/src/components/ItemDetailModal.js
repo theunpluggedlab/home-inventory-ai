@@ -7,7 +7,8 @@ import { supabase, uploadImage } from '../lib/supabase';
 const ItemDetailModal = ({ visible, item, onClose, onUpdate, onMove }) => {
     const [uploading, setUploading] = useState(false);
 
-    if (!item) return null;
+    // Safety check
+    if (!item && visible) return null;
 
     const handleEditPhoto = async () => {
         Alert.alert(

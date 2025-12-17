@@ -97,6 +97,7 @@ const ReviewScreen = ({ route, navigation }) => {
                 .single();
 
             if (roomError) throw roomError;
+            if (!roomData) throw new Error("Room creation failed: No data returned.");
 
             // 2. Create Storage Unit
             const { data: unitData, error: unitError } = await supabase
@@ -106,6 +107,7 @@ const ReviewScreen = ({ route, navigation }) => {
                 .single();
 
             if (unitError) throw unitError;
+            if (!unitData) throw new Error("Storage Unit creation failed: No data returned.");
 
             // 3. Refresh and Select
             await fetchLocations();
@@ -120,8 +122,9 @@ const ReviewScreen = ({ route, navigation }) => {
             setNewRoomName("");
             setNewUnitName("");
 
-            Alert.alert("Success", "Location created!");
-            return newLoc; // Return the new location!
+            // UX Improvement: Auto-save immediately after creating location
+            // No Alert "Success", just proceed.
+            return newLoc;
 
         } catch (err) {
             Alert.alert("Error", "Failed to create location: " + err.message);
@@ -129,9 +132,13 @@ const ReviewScreen = ({ route, navigation }) => {
         }
     };
 
-    // Wrapper for the button press which might expect void
+    // Wrapper for the button press
     const handleCreateAndSelect = async () => {
-        await createLocation();
+        const newLoc = await createLocation();
+        if (newLoc) {
+            // Automatically trigger save with the new location
+            await onSaveAll(newLoc.id);
+        }
     };
 
     const updateItem = (index, field, value) => {
@@ -174,43 +181,40 @@ const ReviewScreen = ({ route, navigation }) => {
             console.log("Step 1: Getting authenticated user...");
             await ensureAuthenticatedUser(); // Just ensuring auth, not using ID for items
 
-            // 1. Upload Image (Once for the batch)
+            // 1. Upload Image (Fail-safe: Don't stop saving if image fails)
             console.log("Step 2: Uploading image...");
             let publicUrl = null;
             try {
                 publicUrl = await uploadImage(imageUri);
             } catch (uploadErr) {
-                console.error("Image upload failed:", uploadErr);
-                // Continue without image or throw? Let's throw for now as it's critical
-                throw new Error("Image upload failed: " + uploadErr.message);
+                console.error("Image upload skipped:", uploadErr);
+                // We proceed without the image
             }
 
-            // 2. Prepare Bulk Insert - STRICT SANITIZATION
+            // 2. Prepare Bulk Insert
             console.log("Step 3: Preparing database insert...");
-            const records = items.map(item => ({
-                name: item.name,
-                // SAFETY: FORCE QUANTITY TO 1 FOR DEBUGGING
-                quantity: 1,
-                // quantity: (typeof item.quantity === 'object' || isNaN(parseInt(item.quantity))) ? 1 : parseInt(item.quantity),
-
-                category: item.category || 'General',
-                storage_id: targetId,
-                image_url: publicUrl
-                // ABSOLUTELY NO user_id here
-            }));
+            const records = items.map(item => {
+                if (!item) return null;
+                return {
+                    name: item.name || 'Unknown Item',
+                    quantity: parseInt(item.quantity) || 1,
+                    category: item.category || 'General',
+                    storage_id: targetId,
+                    image_url: publicUrl
+                };
+            }).filter(item => item !== null);
 
             console.log("Records to insert:", JSON.stringify(records, null, 2));
-            // Alert.alert("Debug Payload", JSON.stringify(records)); // Uncomment to see payload on screen
 
             // 3. Perform Insert
             const { data: insertedData, error: dbError } = await supabase
                 .from('items')
                 .insert(records)
-                .select(); // Select to verify return
+                .select();
 
             if (dbError) {
                 console.error("Database error details:", dbError);
-                Alert.alert("Item Save Error (DB)", JSON.stringify(dbError));
+                Alert.alert("DB Error", `Code: ${dbError.code}\nMessage: ${dbError.message}\nDetails: ${dbError.details}`);
                 throw new Error(`Database insert failed: ${dbError.message}`);
             }
 
@@ -232,7 +236,8 @@ const ReviewScreen = ({ route, navigation }) => {
                             setSelectedLocation(null);
                             // Close all modals
                             setLocationModalVisible(false);
-                            // Navigate to Inventory Tab directly
+                            // Navigate to Inventory Tab
+                            // Stack: Main -> Tab: Inventory
                             navigation.navigate('Main', { screen: 'Inventory' });
                         }
                     }

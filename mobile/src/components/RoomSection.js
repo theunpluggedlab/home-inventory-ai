@@ -73,7 +73,7 @@ const RoomSection = ({
             </View>
 
             {/* Storage Units */}
-            {storageUnits.map((unit) => {
+            {(storageUnits || []).map((unit) => {
                 const isStorageSelected = isSelectionMode && selectedStorageUnits?.includes(unit.id);
 
                 const handleStoragePress = () => {
@@ -124,7 +124,7 @@ const RoomSection = ({
 
                         {/* Items */}
                         {unit.items && unit.items.length > 0 ? (
-                            unit.items.map(item => (
+                            (unit.items || []).map(item => (
                                 <ItemRow
                                     key={item.id}
                                     item={item}

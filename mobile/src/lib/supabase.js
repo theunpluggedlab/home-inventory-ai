@@ -18,45 +18,55 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 export const ensureAuthenticatedUser = async () => {
-    // 1. Check if session/user exists locally
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-        console.log("Existing user found:", session.user.id);
-        return session.user.id;
-    }
-
-    console.log("No session found. Attempting Anonymous Sign In...");
-
     try {
-        // 2. Try Anonymous Sign In
-        const { data, error } = await supabase.auth.signInAnonymously();
-
-        if (error) {
-            console.log("Anonymous login failed, falling back to dummy email login:", error.message);
-            // Fallback: If Anonymous auth is not enabled in dashboard, use a dummy email 
-            // BUT this requires "Confirm Email" to be OFF in dashboard.
-            const randomId = Math.floor(Math.random() * 100000);
-            const dummyEmail = `guest.user${randomId}@inventoryapp.local`; // More realistic looking
-            const dummyPassword = "GuestPass123!";
-
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                email: dummyEmail,
-                password: dummyPassword,
-            });
-
-            if (signUpError) throw signUpError;
-            console.log("Fallback Signup Success:", signUpData.user.id);
-            return signUpData.user.id;
+        // 1. Check existing session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+            console.log("Existing user session:", session.user.id);
+            return session.user.id;
         }
 
-        if (data?.user) {
-            console.log("Anonymous login success:", data.user.id);
-            return data.user.id;
+        console.log("No session. Attempting Fixed Guest Auth...");
+        const email = "default_guest@inventoryapp.local";
+        const password = "FixedGuestPass123!";
+
+        // 2. Try to Sign In first
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
+
+        if (signInData?.user) {
+            console.log("Guest Login Success:", signInData.user.id);
+            return signInData.user.id;
+        }
+
+        // 3. If Sign In failed, User likely doesn't exist -> Sign Up
+        if (signInError) {
+            console.log("Login failed (likely new user), attempting Signup...", signInError.message);
+
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                email,
+                password,
+            });
+
+            if (signUpError) {
+                // Special case: User already registered but login failed? (e.g. wrong password)
+                // Should not happen with fixed password, but good to know.
+                throw signUpError;
+            }
+
+            if (signUpData?.user) {
+                console.log("Guest Signup Success:", signUpData.user.id);
+                return signUpData.user.id;
+            }
         }
 
     } catch (e) {
         console.error("Auth Critical Failure:", e);
-        throw new Error(`Authentication Failed: ${e.message || "Unknown error"}`);
+        // Don't crash the app, return null or throw? 
+        // Throwing will be caught by HomeScreen.
+        throw new Error(`Authentication Failed: ${e.message}`);
     }
 
     throw new Error("Authentication failed unexpectedly.");
@@ -73,7 +83,13 @@ export const uploadImage = async (uri) => {
         const timestamp = Date.now();
         const random = Math.random().toString(36).substring(7);
         const fileName = `${timestamp}_${random}.jpg`;
-        const filePath = `items/${fileName}`;
+        // const filePath = `items/${fileName}`;
+
+        // Create file path - use 'public' folder to avoid user-specific folder permission issues
+        // or just root if policies are open.
+        // Let's use a flat structure for simplicity since it's a personal app.
+        const filePath = `${timestamp}_${random}.jpg`;
+        // const filePath = `public/${fileName}`; // Alternative
 
         // Read file as base64
         const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
@@ -83,10 +99,11 @@ export const uploadImage = async (uri) => {
             .from('item-images')
             .upload(filePath, decode(base64), {
                 contentType: 'image/jpeg',
-                upsert: false
+                upsert: true // Overwrite if exists
             });
 
         if (uploadError) {
+            console.error("Supabase Storage Upload Error:", uploadError);
             throw new Error(`Upload failed: ${uploadError.message}`);
         }
 

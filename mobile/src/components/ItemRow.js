@@ -3,11 +3,15 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 const ItemRow = ({ item, onPress, isSelectionMode, isSelected, onLongPress, onToggleSelect }) => {
+    // Safety check: Don't render if item is missing
+    if (!item) return null;
+
     const handlePress = () => {
         if (isSelectionMode) {
-            onToggleSelect && onToggleSelect(item);
+            if (onToggleSelect) onToggleSelect(item);
         } else {
-            onPress && onPress(item);
+            // console.log("Item Pressed:", item.name); // Removed log for prod
+            if (onPress) onPress(item);
         }
     };
 

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, ActivityIndicator, Alert, TextInput, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { supabase, uploadImage } from '../lib/supabase';
+import { supabase, uploadImage, ensureAuthenticatedUser } from '../lib/supabase';
 import RoomSection from '../components/RoomSection';
 import ItemRow from '../components/ItemRow';
 import ItemDetailModal from '../components/ItemDetailModal';
@@ -40,6 +40,8 @@ const InventoryScreen = ({ navigation }) => {
 
     const fetchInventory = async () => {
         try {
+            await ensureAuthenticatedUser();
+
             // Fetch regular inventory (rooms with storage units)
             const { data: rawData, error } = await supabase
                 .from('rooms')
