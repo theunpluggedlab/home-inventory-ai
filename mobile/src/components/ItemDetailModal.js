@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, StyleSheet, Modal, TouchableOpacity, Alert, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Image, StyleSheet, Modal, TouchableOpacity, Alert, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase, uploadImage } from '../lib/supabase';
@@ -145,19 +145,54 @@ const ItemDetailModal = ({ visible, item, onClose, onUpdate, onMove }) => {
         );
     };
 
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState('');
+    const [editQuantity, setEditQuantity] = useState('');
+    const [editCategory, setEditCategory] = useState('');
+
+    // Initialize edit state when item changes
+    React.useEffect(() => {
+        if (item) {
+            setEditName(item.name);
+            setEditQuantity(String(item.quantity) || '1');
+            setEditCategory(item.category || '');
+        }
+    }, [item]);
+
+    const handleSaveDetails = async () => {
+        try {
+            const { error } = await supabase
+                .from('items')
+                .update({
+                    name: editName,
+                    quantity: parseInt(editQuantity) || 1,
+                    category: editCategory
+                })
+                .eq('id', item.id);
+
+            if (error) throw error;
+
+            Alert.alert("Success", "Item updated!");
+            setIsEditing(false);
+            onUpdate(); // Refresh parent
+        } catch (err) {
+            Alert.alert("Error", "Failed to update item: " + err.message);
+        }
+    };
+
     return (
         <Modal visible={visible} animationType="slide" transparent={false}>
             <View style={styles.container}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Item Details</Text>
+                    <Text style={styles.headerTitle}>{isEditing ? "Edit Item" : "Item Details"}</Text>
                     <TouchableOpacity onPress={onClose}>
                         <MaterialIcons name="close" size={28} color="#2D2D2D" />
                     </TouchableOpacity>
                 </View>
 
                 <ScrollView contentContainerStyle={styles.content}>
-                    {/* Image Section */}
+                    {/* Image Section - Only show when not editing or let it stay? Let's keep it. */}
                     <View style={styles.imageSection}>
                         {uploading ? (
                             <View style={styles.loadingContainer}>
@@ -172,44 +207,96 @@ const ItemDetailModal = ({ visible, item, onClose, onUpdate, onMove }) => {
                                 <Text style={styles.noImageText}>No photo</Text>
                             </View>
                         )}
+
+                        {/* Photo Actions inside Image Section for better UX */}
+                        <TouchableOpacity style={styles.photoEditBtn} onPress={handleEditPhoto}>
+                            <MaterialIcons name="camera-alt" size={24} color="white" />
+                        </TouchableOpacity>
                     </View>
 
                     {/* Item Info */}
                     <View style={styles.infoSection}>
-                        <Text style={styles.itemName}>{item.name}</Text>
-                        <View style={styles.infoRow}>
-                            <Text style={styles.infoLabel}>Quantity:</Text>
-                            <Text style={styles.infoValue}>{item.quantity}</Text>
-                        </View>
-                        <View style={styles.infoRow}>
-                            <Text style={styles.infoLabel}>Category:</Text>
-                            <Text style={styles.infoValue}>{item.category || 'General'}</Text>
-                        </View>
+                        {isEditing ? (
+                            <>
+                                <Text style={styles.inputLabel}>Name</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={editName}
+                                    onChangeText={setEditName}
+                                />
+                                <View style={styles.rowInputs}>
+                                    <View style={{ flex: 1, marginRight: 8 }}>
+                                        <Text style={styles.inputLabel}>Quantity</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={editQuantity}
+                                            keyboardType="numeric"
+                                            onChangeText={setEditQuantity}
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.inputLabel}>Category</Text>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={editCategory}
+                                            onChangeText={setEditCategory}
+                                        />
+                                    </View>
+                                </View>
+                            </>
+                        ) : (
+                            <>
+                                <Text style={styles.itemName}>{item.name}</Text>
+                                <View style={styles.infoRow}>
+                                    <Text style={styles.infoLabel}>Quantity:</Text>
+                                    <Text style={styles.infoValue}>{item.quantity}</Text>
+                                </View>
+                                <View style={styles.infoRow}>
+                                    <Text style={styles.infoLabel}>Category:</Text>
+                                    <Text style={styles.infoValue}>{item.category || 'General'}</Text>
+                                </View>
+                            </>
+                        )}
                     </View>
 
                     {/* Action Buttons */}
                     <View style={styles.actionsSection}>
-                        <TouchableOpacity style={styles.actionBtn} onPress={handleEditPhoto}>
-                            <MaterialIcons name="photo-camera" size={24} color="#C9B59C" />
-                            <Text style={styles.actionBtnText}>Edit Photo</Text>
-                        </TouchableOpacity>
-
-                        {item.image_url && (
-                            <TouchableOpacity style={styles.actionBtn} onPress={handleRemovePhoto}>
-                                <MaterialIcons name="delete-outline" size={24} color="#666" />
-                                <Text style={styles.actionBtnText}>Remove Photo</Text>
+                        {isEditing ? (
+                            <TouchableOpacity style={[styles.actionBtn, styles.saveBtn]} onPress={handleSaveDetails}>
+                                <MaterialIcons name="save" size={24} color="white" />
+                                <Text style={styles.saveBtnText}>Save Changes</Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => setIsEditing(true)}>
+                                <MaterialIcons name="edit" size={24} color="#C9B59C" />
+                                <Text style={styles.actionBtnText}>Edit Details</Text>
                             </TouchableOpacity>
                         )}
 
-                        <TouchableOpacity style={styles.actionBtn} onPress={onMove}>
-                            <MaterialIcons name="drive-file-move" size={24} color="#C9B59C" />
-                            <Text style={styles.actionBtnText}>Move Item</Text>
-                        </TouchableOpacity>
+                        {!isEditing && (
+                            <>
+                                <TouchableOpacity style={styles.actionBtn} onPress={handleEditPhoto}>
+                                    <MaterialIcons name="photo-camera" size={24} color="#C9B59C" />
+                                    <Text style={styles.actionBtnText}>Change Photo</Text>
+                                </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteItem}>
-                            <MaterialIcons name="delete-forever" size={24} color="white" />
-                            <Text style={styles.deleteBtnText}>Delete Item</Text>
-                        </TouchableOpacity>
+                                <TouchableOpacity style={styles.actionBtn} onPress={onMove}>
+                                    <MaterialIcons name="drive-file-move" size={24} color="#C9B59C" />
+                                    <Text style={styles.actionBtnText}>Move Item</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity style={styles.deleteBtn} onPress={handleDeleteItem}>
+                                    <MaterialIcons name="delete-forever" size={24} color="white" />
+                                    <Text style={styles.deleteBtnText}>Delete Item</Text>
+                                </TouchableOpacity>
+                            </>
+                        )}
+
+                        {isEditing && (
+                            <TouchableOpacity style={styles.actionBtn} onPress={() => setIsEditing(false)}>
+                                <Text style={styles.actionBtnText}>Cancel Edit</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 </ScrollView>
             </View>
@@ -334,6 +421,41 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: 'white',
+    },
+    saveBtn: {
+        backgroundColor: '#C9B59C',
+        borderWidth: 0,
+    },
+    saveBtnText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: 'white',
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#EFE9E3',
+        borderRadius: 12,
+        padding: 12,
+        fontSize: 16,
+        marginBottom: 16,
+        backgroundColor: '#FAFAFA'
+    },
+    inputLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#999',
+        marginBottom: 4,
+    },
+    rowInputs: {
+        flexDirection: 'row',
+    },
+    photoEditBtn: {
+        position: 'absolute',
+        bottom: 12,
+        right: 12,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: 8,
+        borderRadius: 20,
     },
 });
 

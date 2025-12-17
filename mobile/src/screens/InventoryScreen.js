@@ -208,11 +208,11 @@ const InventoryScreen = ({ navigation }) => {
         }
     };
 
-    // Delete Room - with safety for items
+    // Delete Room - STRICT: Cannot delete if items exist
     const handleDeleteRoom = (room) => {
         Alert.alert(
             "Delete Room",
-            `Delete '${room.name}'? All items inside will be moved to 'Unsorted Items'.`,
+            `Delete '${room.name}'?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -220,24 +220,26 @@ const InventoryScreen = ({ navigation }) => {
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            // STEP 1: Set all items in this room's storage units to null
-                            // First get all storage unit IDs in this room
+                            // Check if room contains any items (via storage units)
                             const { data: storageUnits } = await supabase
                                 .from('storage_units')
-                                .select('id')
+                                .select('id, items(id)') // Select items to count
                                 .eq('room_id', room.id);
 
-                            if (storageUnits && storageUnits.length > 0) {
-                                const storageIds = storageUnits.map(u => u.id);
-
-                                // Update items to have null storage_id
-                                await supabase
-                                    .from('items')
-                                    .update({ storage_id: null })
-                                    .in('storage_id', storageIds);
+                            // Check total item count
+                            let totalItems = 0;
+                            if (storageUnits) {
+                                storageUnits.forEach(unit => {
+                                    if (unit.items) totalItems += unit.items.length;
+                                });
                             }
 
-                            // STEP 2: Delete the room (cascade will delete storage units)
+                            if (totalItems > 0) {
+                                Alert.alert("Cannot Delete", `This room contains ${totalItems} item(s). Please remove or move them first.`);
+                                return;
+                            }
+
+                            // Safe to delete (Cascade handles empty storage units)
                             const { error } = await supabase
                                 .from('rooms')
                                 .delete()
@@ -245,8 +247,8 @@ const InventoryScreen = ({ navigation }) => {
 
                             if (error) throw error;
 
-                            Alert.alert("Success", "Room deleted. Items moved to 'Unsorted'.");
-                            fetchInventory(); // Refresh list
+                            Alert.alert("Success", "Room deleted.");
+                            fetchInventory();
                         } catch (err) {
                             Alert.alert("Error", "Failed to delete room: " + err.message);
                         }
@@ -256,11 +258,11 @@ const InventoryScreen = ({ navigation }) => {
         );
     };
 
-    // Delete Storage Unit - with safety for items
+    // Delete Storage Unit - STRICT: Cannot delete if items exist
     const handleDeleteStorageUnit = (unit) => {
         Alert.alert(
             "Delete Storage Unit",
-            `Delete '${unit.name}'? All items inside will be moved to 'Unsorted Items'.`,
+            `Delete '${unit.name}'?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -268,13 +270,20 @@ const InventoryScreen = ({ navigation }) => {
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            // STEP 1: Set all items in this storage unit to null
-                            await supabase
+                            // Check for items
+                            const { count, error: countError } = await supabase
                                 .from('items')
-                                .update({ storage_id: null })
+                                .select('*', { count: 'exact', head: true })
                                 .eq('storage_id', unit.id);
 
-                            // STEP 2: Delete the storage unit
+                            if (countError) throw countError;
+
+                            if (count > 0) {
+                                Alert.alert("Cannot Delete", `This storage unit contains ${count} item(s). Please remove or move them first.`);
+                                return;
+                            }
+
+                            // Safe to delete
                             const { error } = await supabase
                                 .from('storage_units')
                                 .delete()
@@ -282,8 +291,8 @@ const InventoryScreen = ({ navigation }) => {
 
                             if (error) throw error;
 
-                            Alert.alert("Success", "Storage unit deleted. Items moved to 'Unsorted'.");
-                            fetchInventory(); // Refresh list
+                            Alert.alert("Success", "Storage unit deleted.");
+                            fetchInventory();
                         } catch (err) {
                             Alert.alert("Error", "Failed to delete storage unit: " + err.message);
                         }

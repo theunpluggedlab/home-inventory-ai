@@ -25,63 +25,38 @@ export const ensureAuthenticatedUser = async () => {
         return session.user.id;
     }
 
-    // 2. Credentials (Stronger to pass policies)
-    const email = "admin_user@inventoryapp.com";
-    const password = "SecurePass_2025!";
-
-    console.log(`Attempting Auto-Login with ${email}...`);
+    console.log("No session found. Attempting Anonymous Sign In...");
 
     try {
-        // 3. Try Auto-Login First
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-        });
+        // 2. Try Anonymous Sign In
+        const { data, error } = await supabase.auth.signInAnonymously();
 
-        if (signInData?.user) {
-            console.log("Silent login success:", signInData.user.id);
-            return signInData.user.id;
-        }
+        if (error) {
+            console.log("Anonymous login failed, falling back to dummy email login:", error.message);
+            // Fallback: If Anonymous auth is not enabled in dashboard, use a dummy email 
+            // BUT this requires "Confirm Email" to be OFF in dashboard.
+            const randomId = Math.floor(Math.random() * 100000);
+            const dummyEmail = `guest.user${randomId}@inventoryapp.local`; // More realistic looking
+            const dummyPassword = "GuestPass123!";
 
-        if (signInError) {
-            console.log("Login failed (User might not exist), attempting Silent Signup...", signInError.message);
-        }
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                email: dummyEmail,
+                password: dummyPassword,
+            });
 
-        // 4. Try Signup if Login failed
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email,
-            password,
-        });
-
-        if (signUpData?.user) {
-            console.log("Silent signup success:", signUpData.user.id);
+            if (signUpError) throw signUpError;
+            console.log("Fallback Signup Success:", signUpData.user.id);
             return signUpData.user.id;
         }
 
-        // 5. Handle "User already registered" edge case
-        // If sign up failed because user exists, but sign in also failed previously,
-        // it might be a race condition or network blip. Try Sign In ONE more time.
-        if (signUpError && signUpError.message.toLowerCase().includes("already registered")) {
-            console.log("User already exists, retrying login...");
-            const { data: retryData, error: retryError } = await supabase.auth.signInWithPassword({
-                email,
-                password
-            });
-
-            if (retryData?.user) {
-                return retryData.user.id;
-            }
-            if (retryError) throw retryError;
+        if (data?.user) {
+            console.log("Anonymous login success:", data.user.id);
+            return data.user.id;
         }
 
-        if (signUpError) throw signUpError;
-
     } catch (e) {
-        console.error("Silent Auth Critical Failure:", e);
-        // Alert the user so they know why saving is failing
-        // Need to import Alert if we use it, but this file doesn't have React imports.
-        // We will just throw with a clear message that the UI catches.
-        throw new Error(`Auth Failed: ${e.message || "Unknown error"}. Check Supabase "Confirm Email" settings.`);
+        console.error("Auth Critical Failure:", e);
+        throw new Error(`Authentication Failed: ${e.message || "Unknown error"}`);
     }
 
     throw new Error("Authentication failed unexpectedly.");

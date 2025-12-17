@@ -157,8 +157,14 @@ const ReviewScreen = ({ route, navigation }) => {
 
         // Validation: Location
         if (!targetId) {
-            Alert.alert("Error", "No Storage ID found. Please select a valid location.");
-            setLocationModalVisible(true);
+            if (locations.length === 0) {
+                // If no locations exist, jump straight to create mode without popup
+                setIsCreatingLocation(true);
+                setLocationModalVisible(true);
+            } else {
+                Alert.alert("Select Location", "Please select where to store these items.");
+                setLocationModalVisible(true);
+            }
             return;
         }
 
@@ -226,8 +232,8 @@ const ReviewScreen = ({ route, navigation }) => {
                             setSelectedLocation(null);
                             // Close all modals
                             setLocationModalVisible(false);
-                            // Navigate to Home
-                            navigation.popToTop();
+                            // Navigate to Inventory Tab directly
+                            navigation.navigate('Main', { screen: 'Inventory' });
                         }
                     }
                 ]
